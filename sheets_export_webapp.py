@@ -1,14 +1,26 @@
 import requests
-
-# Yeh woh URL hai jo Apps Script "Deploy > New deployment" ke baad mila tha
-# Isko yahan seedha mat likho -- GitHub Secrets se aayega (agla step mein dikhayenge)
 import os
+import pandas as pd
+
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL")
 
 
+def _json_safe(value):
+    """Timestamp / datetime / NaT ko JSON-safe string mein convert karta hai."""
+    if pd.isna(value):
+        return ""
+    if isinstance(value, (pd.Timestamp,)):
+        return str(value)
+    try:
+        import datetime
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return str(value)
+    except Exception:
+        pass
+    return value
+
+
 def export_to_google_sheet(outputs: dict):
-    """Har section (Gem_Setup_Intraday, Gem_Setup_HigherTF, etc.) ko
-    ek alag tab/sheet mein bhej deta hai Apps Script ke through."""
     if not APPS_SCRIPT_URL:
         print("APPS_SCRIPT_URL set nahi hai -- Sheet export skip ho raha hai.")
         return
@@ -17,8 +29,10 @@ def export_to_google_sheet(outputs: dict):
         if df.empty:
             rows = [["No rows"]]
         else:
-            safe_df = df.fillna("").astype(object)
-            rows = [safe_df.columns.tolist()] + safe_df.values.tolist()
+            safe_df = df.copy()
+            rows = [safe_df.columns.tolist()]
+            for _, r in safe_df.iterrows():
+                rows.append([_json_safe(v) for v in r.tolist()])
 
         payload = {"sheetName": section[:99], "rows": rows}
         try:
@@ -29,7 +43,3 @@ def export_to_google_sheet(outputs: dict):
                 print(f"Sheet update failed for {section}: {resp.status_code} {resp.text[:200]}")
         except Exception as e:
             print(f"Sheet export error for {section}: {e}")
-
-
-# main() ke andar, export_excel(outputs) ke baad yeh line add kar do:
-#   export_to_google_sheet(outputs)
