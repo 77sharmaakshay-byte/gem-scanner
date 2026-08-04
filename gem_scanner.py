@@ -47,7 +47,7 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 # =============================================================================
 
 RUN_SCANNER = True
-MAX_STOCKS = None
+MAX_STOCKS = 10
 EXPORT_EXCEL = False
 
 # Gem thresholds requested from the Pine setup.
