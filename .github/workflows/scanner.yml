@@ -1,0 +1,28 @@
+name: Gem Setup Scanner
+
+on:
+  schedule:
+    # IST = UTC + 5:30. Runs cover 9:15 AM - 3:45 PM IST, Mon-Fri, every 30 min.
+    - cron: '15 4-9 * * 1-5'
+    - cron: '45 3-9 * * 1-5'
+  workflow_dispatch:   # lets you trigger it manually from the Actions tab to test
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scanner
+        env:
+          APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
+        run: python gem_scanner.py
