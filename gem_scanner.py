@@ -48,7 +48,7 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 RUN_SCANNER = True
 MAX_STOCKS = None
-EXPORT_EXCEL = True
+EXPORT_EXCEL = False
 
 # Gem thresholds requested from the Pine setup.
 # Gem row qualifies when either price SQ% or RSI-BB% crosses the TF-group threshold.
