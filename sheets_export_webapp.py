@@ -102,7 +102,7 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, next_scan: str) -> No
         header = [
             ["Scanned at:", scanned_at],
             ["Next scan:", next_scan],
-            [],
+            [""],
         ]
         rows = header + _build_grouped_rows(section, df)
         _post(section, rows)
