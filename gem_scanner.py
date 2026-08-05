@@ -36,7 +36,7 @@ except Exception:
     HTML = None
     display = None
 
-from sheets_export_webapp import export_to_google_sheet
+from sheets_export_webapp import export_to_google_sheet, export_status_only
 
 warnings.filterwarnings("ignore")
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -199,6 +199,26 @@ def timeframes_due_now() -> List[str]:
 
     return due
 
+SCAN_INTERVAL_MINUTES = 15
+MARKET_CLOSE_OFFSET_MINUTES = 15 * 60 + 15  # 3:15 PM
+
+
+def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
+    """Agla scheduled run kab hoga -- 15-min grid par, market hours ke andar."""
+    market_open = now.normalize() + pd.Timedelta(minutes=MARKET_OPEN_OFFSET_MINUTES)
+    market_close = now.normalize() + pd.Timedelta(minutes=MARKET_CLOSE_OFFSET_MINUTES)
+
+    if now < market_open:
+        return market_open
+
+    interval = pd.Timedelta(minutes=SCAN_INTERVAL_MINUTES)
+    elapsed = now - market_open
+    steps = int(elapsed / interval) + 1
+    nxt = market_open + steps * interval
+
+    if nxt > market_close:
+        return None  # market band -- agla din
+    return nxt
 
 # =============================================================================
 # SYMBOL LIST
@@ -1482,16 +1502,22 @@ def main() -> None:
     print(f"pandas {pd.__version__} | numpy {np.__version__}")
     print("Rules-only scanner using Pine-style SQ%, RSI-BB%, confidence, and setup logic.")
 
+    now = _local_now_naive()
+    scanned_str = now.strftime("%d %b %Y, %I:%M %p")
+    nxt = compute_next_scan_time(now)
+    next_str = nxt.strftime("%d %b %Y, %I:%M %p") if nxt is not None else "Market band -- agle trading din 9:15 AM"
+
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         if not due_tfs:
             print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
+            export_status_only(scanned_str, next_str)
         else:
             outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
             export_excel(outputs)
-            export_to_google_sheet(outputs)
+            export_to_google_sheet(outputs, scanned_str, next_str)
 
     print("\nDone.")
 
