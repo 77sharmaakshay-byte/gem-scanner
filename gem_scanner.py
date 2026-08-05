@@ -173,6 +173,25 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
 
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 
+def timeframes_due_now() -> List[str]:
+    """Sirf woh timeframes return karta hai jinka bar abhi close hua hoga."""
+    now = _local_now_naive()
+    open_dt = now.normalize() + pd.Timedelta(minutes=MARKET_OPEN_OFFSET_MINUTES)
+    elapsed = int((now - open_dt).total_seconds() // 60)
+    if elapsed < 0:
+        return []
+
+    due: List[str] = []
+    for tf in INTRADAY_TIMEFRAMES:
+        tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
+        if tf_minutes > 0 and elapsed % tf_minutes == 0:
+            due.append(tf)
+
+    if now.hour >= 15:
+        due += HIGHER_TIMEFRAMES
+
+    return due
+
 
 # =============================================================================
 # SYMBOL LIST
@@ -1297,12 +1316,13 @@ def visible_squeeze_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def run_scanner(
     syms_nse: List[str],
     syms_yf: List[str],
+    scan_timeframes: Optional[List[str]] = None,
 ) -> Dict[str, pd.DataFrame]:
     if MAX_STOCKS:
         syms_nse = syms_nse[:MAX_STOCKS]
         syms_yf = syms_yf[:MAX_STOCKS]
 
-    groups = timeframe_groups(SCAN_TIMEFRAMES)
+    groups = timeframe_groups(scan_timeframes or SCAN_TIMEFRAMES)
     print(f"\nGEM SETUP SCANNER | Stocks:{len(syms_yf)} | TFs:{', '.join(SCAN_TIMEFRAMES)}")
     print(
         "Gem thresholds: "
@@ -1457,9 +1477,14 @@ def main() -> None:
 
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
-        outputs = run_scanner(syms_nse, syms_yf)
-        export_excel(outputs)
-        export_to_google_sheet(outputs)
+        due_tfs = timeframes_due_now()
+        print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
+        if not due_tfs:
+            print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
+        else:
+            outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
+            export_excel(outputs)
+            export_to_google_sheet(outputs)
 
     print("\nDone.")
 
