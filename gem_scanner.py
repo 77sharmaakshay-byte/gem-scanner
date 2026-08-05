@@ -174,7 +174,10 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 
 def timeframes_due_now() -> List[str]:
-    """Sirf woh timeframes return karta hai jinka bar abhi close hua hoga."""
+    """Sirf woh timeframes return karta hai jinka bar (roughly) abhi close hua hoga.
+    Cron/runner delay ko handle karne ke liye 2-min tolerance rakha hai."""
+    TOLERANCE_MINUTES = 2
+
     now = _local_now_naive()
     open_dt = now.normalize() + pd.Timedelta(minutes=MARKET_OPEN_OFFSET_MINUTES)
     elapsed = int((now - open_dt).total_seconds() // 60)
@@ -184,7 +187,11 @@ def timeframes_due_now() -> List[str]:
     due: List[str] = []
     for tf in INTRADAY_TIMEFRAMES:
         tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
-        if tf_minutes > 0 and elapsed % tf_minutes == 0:
+        if tf_minutes <= 0:
+            continue
+        remainder = elapsed % tf_minutes
+        close_to_boundary = remainder <= TOLERANCE_MINUTES or (tf_minutes - remainder) <= TOLERANCE_MINUTES
+        if close_to_boundary:
             due.append(tf)
 
     if now.hour >= 15:
