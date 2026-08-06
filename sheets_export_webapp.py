@@ -4,10 +4,11 @@ import pandas as pd
 
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL")
 
-# Fixed order jisme intraday timeframes sheet mein dikhne chahiye
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
+ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D"]
 
 DATA_HEADER = ["Symbol", "SQ%", "RSI Width"]
+NEW_SETUP_HEADER = ["Symbol", "Side", "Close", "SQ%"]
 
 
 def _json_safe(value):
@@ -37,12 +38,11 @@ def _fetch_existing_rows(section: str) -> list:
     return []
 
 
-def _parse_existing_intraday(rows: list) -> dict:
-    """Purani Sheet content se har TF-block (uski scanned-at time + data rows)
-    wapas nikalta hai, taaki carry-forward kiya ja sake."""
+def _parse_existing_generic(rows: list, data_header: list) -> dict:
     blocks = {}
     i = 0
     n = len(rows)
+    hlen = len(data_header)
     while i < n:
         row = rows[i]
         if row and isinstance(row[0], str) and row[0].startswith("TF: "):
@@ -51,12 +51,12 @@ def _parse_existing_intraday(rows: list) -> dict:
             if len(row) > 1 and isinstance(row[1], str) and row[1].startswith("Scanned at: "):
                 scanned_at = row[1][len("Scanned at: "):]
             i += 1
-            if i < n and list(rows[i][:3]) == DATA_HEADER:
+            if i < n and list(rows[i][:hlen]) == data_header:
                 i += 1
             data_rows = []
             while i < n and rows[i] and not (isinstance(rows[i][0], str) and rows[i][0].startswith("TF: ")):
                 if rows[i][0] not in ("", None):
-                    data_rows.append(list(rows[i][:3]))
+                    data_rows.append(list(rows[i][:hlen]))
                 i += 1
             blocks[tf] = (scanned_at, data_rows)
         else:
@@ -65,7 +65,7 @@ def _parse_existing_intraday(rows: list) -> dict:
 
 
 def _build_intraday_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> list:
-    old_blocks = _parse_existing_intraday(_fetch_existing_rows("Gem_Setup_Intraday"))
+    old_blocks = _parse_existing_generic(_fetch_existing_rows("Gem_Setup_Intraday"), DATA_HEADER)
 
     fresh_blocks = {tf: (scanned_at, []) for tf in due_tfs if tf in INTRADAY_TF_ORDER}
     if not df.empty:
@@ -76,7 +76,6 @@ def _build_intraday_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> li
 
     combined = dict(old_blocks)
     combined.update(fresh_blocks)
-
     ordered_tfs = [tf for tf in INTRADAY_TF_ORDER if tf in combined]
 
     rows = []
@@ -84,6 +83,31 @@ def _build_intraday_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> li
         s_at, data_rows = combined[tf]
         rows.append([f"TF: {tf}", f"Scanned at: {s_at}"])
         rows.append(DATA_HEADER)
+        for dr in data_rows:
+            rows.append([_json_safe(v) for v in dr])
+        rows.append([""])
+    return rows
+
+
+def _build_new_setup_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> list:
+    old_blocks = _parse_existing_generic(_fetch_existing_rows("New_HA_Squeeze_Setup"), NEW_SETUP_HEADER)
+
+    fresh_blocks = {tf: (scanned_at, []) for tf in due_tfs if tf in ALL_TF_ORDER}
+    if not df.empty:
+        for tf, g in df.groupby("TF"):
+            g = g.sort_values("SQ%", ascending=False)
+            data_rows = [[r["Symbol"], r["Side"], r["Close"], r.get("SQ%", "")] for _, r in g.iterrows()]
+            fresh_blocks[tf] = (scanned_at, data_rows)
+
+    combined = dict(old_blocks)
+    combined.update(fresh_blocks)
+    ordered_tfs = [tf for tf in ALL_TF_ORDER if tf in combined]
+
+    rows = []
+    for tf in ordered_tfs:
+        s_at, data_rows = combined[tf]
+        rows.append([f"TF: {tf}", f"Scanned at: {s_at}"])
+        rows.append(NEW_SETUP_HEADER)
         for dr in data_rows:
             rows.append([_json_safe(v) for v in dr])
         rows.append([""])
@@ -140,6 +164,8 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> Non
     for section, df in outputs.items():
         if section == "Gem_Setup_Intraday":
             body = _build_intraday_rows(df, due_tfs, scanned_at)
+        elif section == "New_HA_Squeeze_Setup":
+            body = _build_new_setup_rows(df, due_tfs, scanned_at)
         else:
             body = [["Scanned at:", scanned_at], [""]] + _build_grouped_rows(section, df)
         _post(section, body)
