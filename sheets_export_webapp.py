@@ -28,7 +28,7 @@ def _fetch_existing_rows(section: str) -> list:
     if not APPS_SCRIPT_URL:
         return []
     try:
-        resp = requests.get(APPS_SCRIPT_URL, params={"sheetName": section}, timeout=30)
+        resp = requests.get(APPS_SCRIPT_URL, params={"sheetName": section}, timeout=60)
         if resp.status_code == 200:
             data = resp.json()
             return data.get("rows", [])
@@ -123,7 +123,7 @@ def _post(section: str, rows: list) -> None:
         return
     payload = {"sheetName": section[:99], "rows": rows}
     try:
-        resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=30)
+        resp = requests.post(APPS_SCRIPT_URL, json=payload, timeout=60)
         if resp.status_code == 200:
             print(f"Sheet updated: {section} ({len(rows)} rows written)")
         else:
