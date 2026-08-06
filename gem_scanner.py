@@ -1501,26 +1501,19 @@ def main() -> None:
     print("GEM SETUP SCANNER v2")
     print(f"pandas {pd.__version__} | numpy {np.__version__}")
     print("Rules-only scanner using Pine-style SQ%, RSI-BB%, confidence, and setup logic.")
-
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
-    nxt = compute_next_scan_time(now)
-    next_str = nxt.strftime("%d %b %Y, %I:%M %p") if nxt is not None else "Market band -- agle trading din 9:15 AM"
-
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         if not due_tfs:
             print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
-            export_status_only(scanned_str, next_str)
+            export_status_only(scanned_str)
         else:
             outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
             export_excel(outputs)
-            export_to_google_sheet(outputs, scanned_str, next_str)
-
+            export_to_google_sheet(outputs, scanned_str, due_tfs)
     print("\nDone.")
-
-
 if __name__ == "__main__":
     main()
