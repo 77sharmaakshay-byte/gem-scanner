@@ -937,8 +937,9 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
         & ha_bb_lower.shift(1).notna()
     ).fillna(False)
 
-    buy_breakout = ha_above_bb
-    sell_breakout = ha_below_bb
+    squeeze_recent_3 = _recent_true(either_squeeze_ready, 2)
+    new_buy_setup = (ha_above_bb & squeeze_recent_3).fillna(False)
+    new_sell_setup = (ha_below_bb & squeeze_recent_3).fillna(False)
 
     buy_entry_seed = ha_above_bb & strong_bull & rsi_cross_upper
     sell_entry_seed = ha_below_bb & strong_bear & rsi_cross_lower
@@ -1137,8 +1138,8 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["strong_bear"] = strong_bear.astype(int)
     out["prev_ha_strong"] = prev_ha_strong.astype(int)
     out["prev_ha_close_inside_bb"] = prev_ha_close_inside_bb.astype(int)
-    out["buy_breakout"] = buy_breakout.astype(int)
-    out["sell_breakout"] = sell_breakout.astype(int)
+    out["new_buy_setup"] = new_buy_setup.astype(int)
+    out["new_sell_setup"] = new_sell_setup.astype(int)
     out["ha_buy_setup"] = ha_buy_setup.astype(int)
     out["ha_sell_setup"] = ha_sell_setup.astype(int)
     out["entry_signal"] = entry_signal
@@ -1365,7 +1366,7 @@ def run_scanner(
     price_rows: List[Dict[str, Any]] = []
     rsi_rows: List[Dict[str, Any]] = []
     both_rows: List[Dict[str, Any]] = []
-    ha_rows: List[Dict[str, Any]] = []
+    hnew_setup_rows: List[Dict[str, Any]] = []
     failed: List[str] = []
     stale_warned: Dict[str, int] = {}
 
@@ -1428,6 +1429,9 @@ def run_scanner(
                                 "Entry Rule": "Buy Above HA High" if side == "BUY" else "Sell Below HA Low",
                             }
                         )
+                        if bool(last.get("new_buy_setup", 0)) or bool(last.get("new_sell_setup", 0)):
+                        new_side = "BUY" if bool(last.get("new_buy_setup", 0)) else "SELL"
+                        new_setup_rows.append({**common, "Side": new_side})
                 except Exception as e:
                     print(f"Scan skip {nse} {tf}: {e}")
 
@@ -1453,6 +1457,8 @@ def run_scanner(
         "RSI_BB_Squeeze": pd.DataFrame(visible_squeeze_rows(rsi_rows)),
         "Both_Squeeze": pd.DataFrame(visible_squeeze_rows(both_rows)),
         "HA_Strong_Setup": pd.DataFrame(visible_squeeze_rows(ha_rows)),
+        "New_HA_Squeeze_Setup": pd.DataFrame(visible_squeeze_rows(new_setup_rows)),
+    }
     }
 
     print(
