@@ -64,6 +64,36 @@ def _parse_existing_generic(rows: list, data_header: list) -> dict:
     return blocks
 
 
+def _parse_existing_dynamic(rows: list):
+    """Full-column sections (jinka header fixed nahi hai) ke liye -- header
+    khud detect karta hai, taaki poori tarah generic reh sake."""
+    blocks = {}
+    header = None
+    i = 0
+    n = len(rows)
+    while i < n:
+        row = rows[i]
+        if row and isinstance(row[0], str) and row[0].startswith("TF: "):
+            tf = row[0][4:].strip()
+            scanned_at = ""
+            if len(row) > 1 and isinstance(row[1], str) and row[1].startswith("Scanned at: "):
+                scanned_at = row[1][len("Scanned at: "):]
+            i += 1
+            if i < n and rows[i] and rows[i][0] not in ("", None):
+                if header is None:
+                    header = list(rows[i])
+                i += 1
+            data_rows = []
+            while i < n and rows[i] and not (isinstance(rows[i][0], str) and rows[i][0].startswith("TF: ")):
+                if rows[i][0] not in ("", None):
+                    data_rows.append(list(rows[i]))
+                i += 1
+            blocks[tf] = (scanned_at, data_rows)
+        else:
+            i += 1
+    return blocks, header
+
+
 def _build_intraday_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> list:
     old_blocks = _parse_existing_generic(_fetch_existing_rows("Gem_Setup_Intraday"), DATA_HEADER)
 
@@ -114,30 +144,48 @@ def _build_new_setup_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> l
     return rows
 
 
-def _build_grouped_rows(section: str, df: pd.DataFrame) -> list:
-    if df.empty:
-        return [["No rows"]]
+def _build_full_carryforward_rows(section: str, df: pd.DataFrame, due_tfs: list, scanned_at: str) -> list:
+    """Baaki saari sheets (HigherTF, Price/RSI/Both Squeeze, HA Strong) ke liye --
+    poore columns rakhte hue bhi purana (non-due) TF data carry-forward karta hai,
+    taaki agla run usko wipe na kar de."""
+    existing_raw = _fetch_existing_rows(section)
+    old_blocks, existing_header = _parse_existing_dynamic(existing_raw)
 
-    has_tf = "TF" in df.columns
-    sort_cols, ascending = [], []
-    if has_tf:
-        sort_cols += ["TF"]
-        ascending += [True]
-    if "Gem Score%" in df.columns:
-        sort_cols += ["Gem Score%"]
-        ascending += [False]
-    view = df.sort_values(sort_cols, ascending=ascending) if sort_cols else df
+    fresh_header = df.columns.tolist() if not df.empty else None
+    header_row = fresh_header or existing_header
 
-    cols = view.columns.tolist()
+    fresh_blocks = {}
+    if not df.empty and "TF" in df.columns:
+        sort_cols = ["TF"]
+        ascending = [True]
+        if "Gem Score%" in df.columns:
+            sort_cols.append("Gem Score%")
+            ascending.append(False)
+        view = df.sort_values(sort_cols, ascending=ascending)
+        for tf, g in view.groupby("TF"):
+            data_rows = [[_json_safe(v) for v in r.tolist()] for _, r in g.iterrows()]
+            fresh_blocks[tf] = (scanned_at, data_rows)
+
+    for tf in due_tfs:
+        if tf not in fresh_blocks:
+            fresh_blocks[tf] = (scanned_at, [])
+
+    combined = dict(old_blocks)
+    combined.update(fresh_blocks)
+    ordered_tfs = [tf for tf in ALL_TF_ORDER if tf in combined]
+
     rows = []
-    current_tf = None
-    for _, r in view.iterrows():
-        tf = r["TF"] if has_tf else None
-        if has_tf and tf != current_tf:
-            rows.append([f"TF: {tf}"])
-            rows.append(cols)
-            current_tf = tf
-        rows.append([_json_safe(v) for v in r.tolist()])
+    for tf in ordered_tfs:
+        s_at, data_rows = combined[tf]
+        rows.append([f"TF: {tf}", f"Scanned at: {s_at}"])
+        if header_row:
+            rows.append(header_row)
+        for dr in data_rows:
+            rows.append(dr)
+        rows.append([""])
+
+    if not rows:
+        return [["No rows yet"]]
     return rows
 
 
@@ -167,7 +215,7 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> Non
         elif section == "New_HA_Squeeze_Setup":
             body = _build_new_setup_rows(df, due_tfs, scanned_at)
         else:
-            body = [["Scanned at:", scanned_at], [""]] + _build_grouped_rows(section, df)
+            body = _build_full_carryforward_rows(section, df, due_tfs, scanned_at)
         _post(section, body)
 
     export_status_only(scanned_at)
