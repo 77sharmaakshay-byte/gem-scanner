@@ -1459,7 +1459,7 @@ def run_scanner(
         "HA_Strong_Setup": pd.DataFrame(visible_squeeze_rows(ha_rows)),
         "New_HA_Squeeze_Setup": pd.DataFrame(visible_squeeze_rows(new_setup_rows)),
     }
-    }
+    
 
     print(
         "\nSignals found: "
