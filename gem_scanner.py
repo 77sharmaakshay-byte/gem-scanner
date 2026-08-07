@@ -47,21 +47,17 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 # =============================================================================
 
 RUN_SCANNER = True
-MAX_STOCKS = None 
+MAX_STOCKS = None
 EXPORT_EXCEL = False
 
-# Gem thresholds requested from the Pine setup.
-# Gem row qualifies when either price SQ% or RSI-BB% crosses the TF-group threshold.
 INTRADAY_GEM_THRESHOLD = 88.0
 HIGHER_TF_GEM_THRESHOLD = 87.0
 MIN_VISIBLE_SQUEEZE = 85.0
 
-# Historical squeeze -> move settings (added).
 SQUEEZE_HISTORY_COUNT = 5
 SQUEEZE_MOVE_LOOKAHEAD_BARS = 10
 GEM_FIRE_TOLERANCE_BARS = 2
 
-# Advanced Pine-style logic settings.
 RSI_LENGTH = 10
 RSI_BB_LENGTH = 14
 RSI_BB_MULT = 2.0
@@ -113,10 +109,6 @@ LOCAL_TIMEZONE = "Asia/Kolkata"
 MARKET_OPEN_OFFSET_MINUTES = 9 * 60 + 15
 
 
-# =============================================================================
-# FRESHNESS THRESHOLDS  (warn_hours, reject_hours)
-# =============================================================================
-
 FRESHNESS_THRESHOLDS: Dict[str, Tuple[int, int]] = {
     "5m": (2, 48),
     "15m": (2, 48),
@@ -140,10 +132,6 @@ FRESHNESS_THRESHOLDS: Dict[str, Tuple[int, int]] = {
     "4W": (960, 2400),
 }
 
-
-# =============================================================================
-# TIMEFRAMES
-# =============================================================================
 
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 HIGHER_TIMEFRAMES = ["1D", "2D", "3D"]
@@ -173,6 +161,7 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
 
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 
+
 def timeframes_due_now() -> List[str]:
     """Sirf woh timeframes return karta hai jinka bar (roughly) abhi close hua hoga.
     Cron/runner delay ko handle karne ke liye 2-min tolerance rakha hai."""
@@ -199,6 +188,7 @@ def timeframes_due_now() -> List[str]:
 
     return due
 
+
 SCAN_INTERVAL_MINUTES = 15
 MARKET_CLOSE_OFFSET_MINUTES = 15 * 60 + 15  # 3:15 PM
 
@@ -217,12 +207,9 @@ def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
     nxt = market_open + steps * interval
 
     if nxt > market_close:
-        return None  # market band -- agla din
+        return None
     return nxt
 
-# =============================================================================
-# SYMBOL LIST
-# =============================================================================
 
 SYMBOL_RENAMES = {
     "FINNIFTY": None,
@@ -350,10 +337,6 @@ def get_fo_symbols() -> Tuple[List[str], List[str]]:
 
     return fix_symbols(scanner_symbol_universe(FNO_STOCKS_RAW))
 
-
-# =============================================================================
-# INDICATORS
-# =============================================================================
 
 def _flatten(df: pd.DataFrame) -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
@@ -548,10 +531,6 @@ def gem_threshold_for_tf(tf: str) -> float:
     return INTRADAY_GEM_THRESHOLD if timeframe_group(tf) == "INTRADAY" else HIGHER_TF_GEM_THRESHOLD
 
 
-# =============================================================================
-# DOWNLOAD / RESAMPLE
-# =============================================================================
-
 def assert_yfinance() -> None:
     if yf is None:
         raise RuntimeError("yfinance not installed. Run: !pip install yfinance -q")
@@ -670,10 +649,6 @@ def timeframe_groups(timeframes: Iterable[str]) -> Dict[Tuple[str, str], List[st
     return groups
 
 
-# =============================================================================
-# FRESHNESS
-# =============================================================================
-
 def _local_now_naive() -> pd.Timestamp:
     try:
         return pd.Timestamp.now(tz=LOCAL_TIMEZONE).tz_localize(None)
@@ -711,10 +686,6 @@ def passes_freshness(df: pd.DataFrame, tf: str) -> Tuple[bool, bool]:
         return False, stale_warn
     return True, stale_warn
 
-
-# =============================================================================
-# SIGNAL FRAME
-# =============================================================================
 
 def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     df = _flatten(df).copy()
@@ -937,6 +908,9 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
         & ha_bb_lower.shift(1).notna()
     ).fillna(False)
 
+    buy_breakout = ha_above_bb
+    sell_breakout = ha_below_bb
+
     squeeze_recent_3 = _recent_true(either_squeeze_ready, 2)
     new_buy_setup = (ha_above_bb & squeeze_recent_3).fillna(False)
     new_sell_setup = (ha_below_bb & squeeze_recent_3).fillna(False)
@@ -1138,6 +1112,8 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["strong_bear"] = strong_bear.astype(int)
     out["prev_ha_strong"] = prev_ha_strong.astype(int)
     out["prev_ha_close_inside_bb"] = prev_ha_close_inside_bb.astype(int)
+    out["buy_breakout"] = buy_breakout.astype(int)
+    out["sell_breakout"] = sell_breakout.astype(int)
     out["new_buy_setup"] = new_buy_setup.astype(int)
     out["new_sell_setup"] = new_sell_setup.astype(int)
     out["ha_buy_setup"] = ha_buy_setup.astype(int)
@@ -1337,10 +1313,6 @@ def visible_squeeze_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [row for row in rows if row_meets_visible_squeeze_floor(row)]
 
 
-# =============================================================================
-# SCANNER
-# =============================================================================
-
 def run_scanner(
     syms_nse: List[str],
     syms_yf: List[str],
@@ -1358,7 +1330,7 @@ def run_scanner(
         f"Higher TF SQ%/RSI-BB% >= {HIGHER_TF_GEM_THRESHOLD:.0f}"
     )
     print(f"Visible rows require SQ% or RSI-BB% >= {MIN_VISIBLE_SQUEEZE:.0f}")
-    print("Sections: Gem Intraday | Gem Higher TF | Price-BB | RSI-BB | Both | HA strong setup")
+    print("Sections: Gem Intraday | Gem Higher TF | Price-BB | RSI-BB | Both | HA strong setup | New HA Squeeze Setup")
     print(f"Freshness: CHECK={CHECK_DATA_FRESHNESS} | REJECT_STALE_DATA={REJECT_STALE_DATA}")
 
     gem_intraday_rows: List[Dict[str, Any]] = []
@@ -1366,7 +1338,8 @@ def run_scanner(
     price_rows: List[Dict[str, Any]] = []
     rsi_rows: List[Dict[str, Any]] = []
     both_rows: List[Dict[str, Any]] = []
-    hnew_setup_rows: List[Dict[str, Any]] = []
+    ha_rows: List[Dict[str, Any]] = []
+    new_setup_rows: List[Dict[str, Any]] = []
     failed: List[str] = []
     stale_warned: Dict[str, int] = {}
 
@@ -1429,7 +1402,8 @@ def run_scanner(
                                 "Entry Rule": "Buy Above HA High" if side == "BUY" else "Sell Below HA Low",
                             }
                         )
-                        if bool(last.get("new_buy_setup", 0)) or bool(last.get("new_sell_setup", 0)):
+
+                    if bool(last.get("new_buy_setup", 0)) or bool(last.get("new_sell_setup", 0)):
                         new_side = "BUY" if bool(last.get("new_buy_setup", 0)) else "SELL"
                         new_setup_rows.append({**common, "Side": new_side})
                 except Exception as e:
@@ -1459,7 +1433,6 @@ def run_scanner(
         "HA_Strong_Setup": pd.DataFrame(visible_squeeze_rows(ha_rows)),
         "New_HA_Squeeze_Setup": pd.DataFrame(visible_squeeze_rows(new_setup_rows)),
     }
-    
 
     print(
         "\nSignals found: "
@@ -1468,14 +1441,11 @@ def run_scanner(
         f"Price={len(outputs['Price_BB_Squeeze'])} | "
         f"RSI={len(outputs['RSI_BB_Squeeze'])} | "
         f"Both={len(outputs['Both_Squeeze'])} | "
-        f"HA Strong={len(outputs['HA_Strong_Setup'])}"
+        f"HA Strong={len(outputs['HA_Strong_Setup'])} | "
+        f"New Setup={len(outputs['New_HA_Squeeze_Setup'])}"
     )
     return outputs
 
-
-# =============================================================================
-# EXCEL EXPORT
-# =============================================================================
 
 def export_excel(outputs: Dict[str, pd.DataFrame]) -> Optional[str]:
     if not EXPORT_EXCEL:
@@ -1499,16 +1469,14 @@ def export_excel(outputs: Dict[str, pd.DataFrame]) -> Optional[str]:
     return fn
 
 
-# =============================================================================
-# MAIN
-# =============================================================================
-
 def main() -> None:
     print("GEM SETUP SCANNER v2")
     print(f"pandas {pd.__version__} | numpy {np.__version__}")
     print("Rules-only scanner using Pine-style SQ%, RSI-BB%, confidence, and setup logic.")
+
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
+
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
@@ -1520,6 +1488,9 @@ def main() -> None:
             outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
             export_excel(outputs)
             export_to_google_sheet(outputs, scanned_str, due_tfs)
+
     print("\nDone.")
+
+
 if __name__ == "__main__":
     main()
