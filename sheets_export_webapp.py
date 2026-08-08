@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D"]
@@ -65,8 +66,6 @@ def _parse_existing_generic(rows: list, data_header: list) -> dict:
 
 
 def _parse_existing_dynamic(rows: list):
-    """Full-column sections (jinka header fixed nahi hai) ke liye -- header
-    khud detect karta hai, taaki poori tarah generic reh sake."""
     blocks = {}
     header = None
     i = 0
@@ -145,9 +144,6 @@ def _build_new_setup_rows(df: pd.DataFrame, due_tfs: list, scanned_at: str) -> l
 
 
 def _build_full_carryforward_rows(section: str, df: pd.DataFrame, due_tfs: list, scanned_at: str) -> list:
-    """Baaki saari sheets (HigherTF, Price/RSI/Both Squeeze, HA Strong) ke liye --
-    poore columns rakhte hue bhi purana (non-due) TF data carry-forward karta hai,
-    taaki agla run usko wipe na kar de."""
     existing_raw = _fetch_existing_rows(section)
     old_blocks, existing_header = _parse_existing_dynamic(existing_raw)
 
@@ -204,6 +200,37 @@ def _post(section: str, rows: list) -> None:
         print(f"Sheet export error for {section}: {e}")
 
 
+def notify_discord(new_setup_df: pd.DataFrame) -> None:
+    """Is run mein jo naye HA+Squeeze setup mile, unki Discord pe alert bhejta hai."""
+    if not DISCORD_WEBHOOK_URL:
+        return
+    if new_setup_df is None or new_setup_df.empty:
+        return
+
+    lines = ["**New HA + Squeeze Setup mila!**", ""]
+    view = new_setup_df.sort_values("TF") if "TF" in new_setup_df.columns else new_setup_df
+    for _, r in view.iterrows():
+        tf = r.get("TF", "")
+        symbol = r.get("Symbol", "")
+        side = r.get("Side", "")
+        close = r.get("Close", "")
+        sq = r.get("SQ%", "")
+        lines.append(f"`{tf}` **{symbol}** -- {side} @ {close} (SQ% {sq})")
+
+    content = "\n".join(lines)
+    if len(content) > 1900:
+        content = content[:1900] + "\n...(trimmed)"
+
+    try:
+        resp = requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30)
+        if resp.status_code not in (200, 204):
+            print(f"Discord notify failed: {resp.status_code} {resp.text[:200]}")
+        else:
+            print(f"Discord notify sent ({len(new_setup_df)} signals)")
+    except Exception as e:
+        print(f"Discord notify error: {e}")
+
+
 def export_status_only(scanned_at: str) -> None:
     _post("Status", [["Current scan time:", scanned_at]])
 
@@ -218,4 +245,5 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> Non
             body = _build_full_carryforward_rows(section, df, due_tfs, scanned_at)
         _post(section, body)
 
+    notify_discord(outputs.get("New_HA_Squeeze_Setup"))
     export_status_only(scanned_at)
