@@ -200,24 +200,35 @@ def _post(section: str, rows: list) -> None:
         print(f"Sheet export error for {section}: {e}")
 
 
-def notify_discord(new_setup_df: pd.DataFrame) -> None:
-    """Is run mein jo naye HA+Squeeze setup mile, unki Discord pe alert bhejta hai."""
+def notify_discord(outputs: dict) -> None:
+    """Is run mein jitni bhi sheets mein naya data mila, sabka ek combined
+    Discord alert bhejta hai."""
     if not DISCORD_WEBHOOK_URL:
         return
-    if new_setup_df is None or new_setup_df.empty:
+
+    non_empty = {k: v for k, v in outputs.items() if v is not None and not v.empty}
+    if not non_empty:
         return
 
-    lines = ["**New HA + Squeeze Setup mila!**", ""]
-    view = new_setup_df.sort_values("TF") if "TF" in new_setup_df.columns else new_setup_df
-    for _, r in view.iterrows():
-        tf = r.get("TF", "")
-        symbol = r.get("Symbol", "")
-        side = r.get("Side", "")
-        close = r.get("Close", "")
-        sq = r.get("SQ%", "")
-        lines.append(f"`{tf}` **{symbol}** -- {side} @ {close} (SQ% {sq})")
+    lines = ["**Naye Signals mile!**", ""]
+    for section, df in non_empty.items():
+        lines.append(f"**{section}** ({len(df)}):")
+        for _, r in df.head(10).iterrows():
+            tf = r.get("TF", "")
+            sym = r.get("Symbol", "")
+            side = r.get("Side", "")
+            close = r.get("Close", "")
+            piece = f"`{tf}` **{sym}**"
+            if side:
+                piece += f" -- {side}"
+            if close != "" and close is not None:
+                piece += f" @ {close}"
+            lines.append(piece)
+        if len(df) > 10:
+            lines.append(f"...+{len(df) - 10} more")
+        lines.append("")
 
-    content = "\n".join(lines)
+    content = "\n".join(lines).strip()
     if len(content) > 1900:
         content = content[:1900] + "\n...(trimmed)"
 
@@ -226,7 +237,7 @@ def notify_discord(new_setup_df: pd.DataFrame) -> None:
         if resp.status_code not in (200, 204):
             print(f"Discord notify failed: {resp.status_code} {resp.text[:200]}")
         else:
-            print(f"Discord notify sent ({len(new_setup_df)} signals)")
+            print(f"Discord notify sent ({len(non_empty)} sections)")
     except Exception as e:
         print(f"Discord notify error: {e}")
 
@@ -245,5 +256,5 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> Non
             body = _build_full_carryforward_rows(section, df, due_tfs, scanned_at)
         _post(section, body)
 
-    notify_discord(outputs.get("New_HA_Squeeze_Setup"))
+    notify_discord(outputs)
     export_status_only(scanned_at)
