@@ -25,4 +25,5 @@ jobs:
       - name: Run scanner
         env:
           APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python gem_scanner.py
