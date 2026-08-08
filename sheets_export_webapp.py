@@ -200,9 +200,18 @@ def _post(section: str, rows: list) -> None:
         print(f"Sheet export error for {section}: {e}")
 
 
+def _fmt_num(value) -> str:
+    try:
+        if value is None or value == "" or pd.isna(value):
+            return ""
+        return f"{float(value):.1f}"
+    except Exception:
+        return str(value)
+
+
 def notify_discord(outputs: dict) -> None:
     """Is run mein jitni bhi sheets mein naya data mila, sabka ek combined
-    Discord alert bhejta hai."""
+    Discord alert bhejta hai -- squeeze% details ke saath."""
     if not DISCORD_WEBHOOK_URL:
         return
 
@@ -223,6 +232,17 @@ def notify_discord(outputs: dict) -> None:
                 piece += f" -- {side}"
             if close != "" and close is not None:
                 piece += f" @ {close}"
+
+            sq = _fmt_num(r.get("SQ%"))
+            rsi_bb = _fmt_num(r.get("RSI-BB%"))
+            extras = []
+            if sq:
+                extras.append(f"SQ% {sq}")
+            if rsi_bb:
+                extras.append(f"RSI-BB% {rsi_bb}")
+            if extras:
+                piece += " (" + ", ".join(extras) + ")"
+
             lines.append(piece)
         if len(df) > 10:
             lines.append(f"...+{len(df) - 10} more")
