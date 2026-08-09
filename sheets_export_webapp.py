@@ -1,9 +1,28 @@
 import requests
 import os
+from typing import Dict, List
 import pandas as pd
 
 APPS_SCRIPT_URL = os.environ.get("APPS_SCRIPT_URL")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+
+# Per-timeframe channel webhooks (optional -- agar set nahi hain, sirf
+# general wala #general channel use hoga, jo pehle se kaam kar raha hai)
+DISCORD_TF_WEBHOOKS = {
+    "5m": os.environ.get("DISCORD_WEBHOOK_5M"),
+    "15m": os.environ.get("DISCORD_WEBHOOK_15M"),
+    "30m": os.environ.get("DISCORD_WEBHOOK_30M"),
+    "45m": os.environ.get("DISCORD_WEBHOOK_45M"),
+    "1H": os.environ.get("DISCORD_WEBHOOK_1H"),
+    "75m": os.environ.get("DISCORD_WEBHOOK_75M"),
+    "2H": os.environ.get("DISCORD_WEBHOOK_2H"),
+    "150m": os.environ.get("DISCORD_WEBHOOK_150M"),
+    "3H": os.environ.get("DISCORD_WEBHOOK_3H"),
+    "4H": os.environ.get("DISCORD_WEBHOOK_4H"),
+    "1D": os.environ.get("DISCORD_WEBHOOK_HIGHER"),
+    "2D": os.environ.get("DISCORD_WEBHOOK_HIGHER"),
+    "3D": os.environ.get("DISCORD_WEBHOOK_HIGHER"),
+}
 
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D"]
@@ -211,56 +230,79 @@ def _fmt_num(value) -> str:
 
 def notify_discord(outputs: dict) -> None:
     """Is run mein jitni bhi sheets mein naya data mila, sabka ek combined
-    Discord alert bhejta hai -- squeeze% details ke saath."""
-    if not DISCORD_WEBHOOK_URL:
-        return
-
+    alert #general (ya default webhook) pe bhejta hai -- squeeze% details ke saath.
+    Saath hi, agar per-TF channel webhooks set hain, to har TF ka apna signal
+    uske dedicated channel mein bhi bhejta hai."""
     non_empty = {k: v for k, v in outputs.items() if v is not None and not v.empty}
     if not non_empty:
         return
 
-    lines = ["**Naye Signals mile!**", ""]
+    def _line(r) -> str:
+        tf = r.get("TF", "")
+        sym = r.get("Symbol", "")
+        side = r.get("Side", "")
+        close = r.get("Close", "")
+        piece = f"`{tf}` **{sym}**"
+        if side:
+            piece += f" -- {side}"
+        if close != "" and close is not None:
+            piece += f" @ {close}"
+        sq = _fmt_num(r.get("SQ%"))
+        rsi_bb = _fmt_num(r.get("RSI-BB%"))
+        extras = []
+        if sq:
+            extras.append(f"SQ% {sq}")
+        if rsi_bb:
+            extras.append(f"RSI-BB% {rsi_bb}")
+        if extras:
+            piece += " (" + ", ".join(extras) + ")"
+        return piece
+
+    def _send(webhook: str, content: str) -> None:
+        if not webhook or not content:
+            return
+        if len(content) > 1900:
+            content = content[:1900] + "\n...(trimmed)"
+        try:
+            resp = requests.post(webhook, json={"content": content}, timeout=30)
+            if resp.status_code not in (200, 204):
+                print(f"Discord notify failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            print(f"Discord notify error: {e}")
+
+    # 1) General/summary channel -- sab kuch ek jagah, jaisa pehle se hai.
+    if DISCORD_WEBHOOK_URL:
+        lines = ["**Naye Signals mile!**", ""]
+        for section, df in non_empty.items():
+            lines.append(f"**{section}** ({len(df)}):")
+            for _, r in df.head(10).iterrows():
+                lines.append(_line(r))
+            if len(df) > 10:
+                lines.append(f"...+{len(df) - 10} more")
+            lines.append("")
+        _send(DISCORD_WEBHOOK_URL, "\n".join(lines).strip())
+        print(f"Discord general notify sent ({len(non_empty)} sections)")
+
+    # 2) Per-timeframe channels -- har TF ka apna dedicated channel.
+    per_tf_rows: Dict[str, List[str]] = {}
     for section, df in non_empty.items():
-        lines.append(f"**{section}** ({len(df)}):")
-        for _, r in df.head(10).iterrows():
-            tf = r.get("TF", "")
-            sym = r.get("Symbol", "")
-            side = r.get("Side", "")
-            close = r.get("Close", "")
-            piece = f"`{tf}` **{sym}**"
-            if side:
-                piece += f" -- {side}"
-            if close != "" and close is not None:
-                piece += f" @ {close}"
+        if "TF" not in df.columns:
+            continue
+        for tf, g in df.groupby("TF"):
+            webhook = DISCORD_TF_WEBHOOKS.get(tf)
+            if not webhook:
+                continue
+            bucket = per_tf_rows.setdefault(tf, [f"**{section}**"])
+            for _, r in g.head(10).iterrows():
+                bucket.append(_line(r))
+            if len(g) > 10:
+                bucket.append(f"...+{len(g) - 10} more")
 
-            sq = _fmt_num(r.get("SQ%"))
-            rsi_bb = _fmt_num(r.get("RSI-BB%"))
-            extras = []
-            if sq:
-                extras.append(f"SQ% {sq}")
-            if rsi_bb:
-                extras.append(f"RSI-BB% {rsi_bb}")
-            if extras:
-                piece += " (" + ", ".join(extras) + ")"
-
-            lines.append(piece)
-        if len(df) > 10:
-            lines.append(f"...+{len(df) - 10} more")
-        lines.append("")
-
-    content = "\n".join(lines).strip()
-    if len(content) > 1900:
-        content = content[:1900] + "\n...(trimmed)"
-
-    try:
-        resp = requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30)
-        if resp.status_code not in (200, 204):
-            print(f"Discord notify failed: {resp.status_code} {resp.text[:200]}")
-        else:
-            print(f"Discord notify sent ({len(non_empty)} sections)")
-    except Exception as e:
-        print(f"Discord notify error: {e}")
-
+    for tf, lines in per_tf_rows.items():
+        webhook = DISCORD_TF_WEBHOOKS.get(tf)
+        _send(webhook, "\n".join(lines).strip())
+    if per_tf_rows:
+        print(f"Discord per-TF notify sent for: {', '.join(per_tf_rows.keys())}")
 
 def export_status_only(scanned_at: str) -> None:
     _post("Status", [["Current scan time:", scanned_at]])
