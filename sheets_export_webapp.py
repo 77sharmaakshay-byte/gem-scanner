@@ -25,7 +25,7 @@ DISCORD_TF_WEBHOOKS = {
 }
 
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
-ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D"]
+ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D", "1W", "1M", "6M"]
 
 DATA_HEADER = ["Symbol", "SQ%", "RSI Width"]
 NEW_SETUP_HEADER = ["Symbol", "Side", "Close", "SQ%"]
@@ -324,12 +324,15 @@ def export_status_only(scanned_at: str) -> None:
     notify_discord_heartbeat(scanned_at)
 
 
-def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> None:
+def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list, mid_bb_due_tfs: list = None) -> None:
+    mid_bb_due_tfs = mid_bb_due_tfs or []
     for section, df in outputs.items():
         if section == "Gem_Setup_Intraday":
             body = _build_intraday_rows(df, due_tfs, scanned_at)
         elif section == "New_HA_Squeeze_Setup":
             body = _build_new_setup_rows(df, due_tfs, scanned_at)
+        elif section == "Mid_BB_Reversal_Setup":
+            body = _build_full_carryforward_rows(section, df, mid_bb_due_tfs, scanned_at)
         else:
             body = _build_full_carryforward_rows(section, df, due_tfs, scanned_at)
         _post(section, body)
