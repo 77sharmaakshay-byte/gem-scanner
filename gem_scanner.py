@@ -130,11 +130,14 @@ FRESHNESS_THRESHOLDS: Dict[str, Tuple[int, int]] = {
     "2W": (480, 1200),
     "3W": (720, 1800),
     "4W": (960, 2400),
+    "1M": (720, 2160),
+    "6M": (4320, 8760),
 }
 
 
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 HIGHER_TIMEFRAMES = ["1D", "2D", "3D"]
+NEW_PATTERN_TIMEFRAMES = ["1D", "2D", "3D", "1W", "1M", "6M"]
 
 TIMEFRAMES: Dict[str, Dict[str, Any]] = {
     "5m": {"interval": "5m", "scan_period": "60d", "resample": None, "tf_days": 5 / 1440},
@@ -157,6 +160,8 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
     "2W": {"interval": "1wk", "scan_period": "10y", "resample": "2W-MON", "tf_days": 14},
     "3W": {"interval": "1wk", "scan_period": "10y", "resample": "3W-MON", "tf_days": 21},
     "4W": {"interval": "1wk", "scan_period": "10y", "resample": "4W-MON", "tf_days": 28},
+    "1M": {"interval": "1mo", "scan_period": "max", "resample": None, "tf_days": 30},
+    "6M": {"interval": "1mo", "scan_period": "max", "resample": "6MO", "tf_days": 180},
 }
 
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
@@ -592,13 +597,17 @@ def _intraday_offset(rule: str) -> Optional[str]:
 
 def _trading_day_group_size(rule: str) -> Optional[int]:
     r = str(rule).strip().upper()
-    if not r.endswith("D"):
+    if r.endswith("D"):
+        suffix_len = 1
+    elif r.endswith("MO"):
+        suffix_len = 2
+    else:
         return None
     try:
-        days = int(r[:-1])
+        count = int(r[:-suffix_len])
     except ValueError:
         return None
-    return days if days > 1 else None
+    return count if count > 1 else None
 
 
 def _resample_ohlcv(df: pd.DataFrame, rule: Optional[str]) -> pd.DataFrame:
@@ -908,6 +917,23 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
         & ha_bb_lower.shift(1).notna()
     ).fillna(False)
 
+    prev2_high_max = high.shift(1).rolling(2, min_periods=2).max()
+    prev2_low_min = low.shift(1).rolling(2, min_periods=2).min()
+    mid_bb_buy_setup = (
+        strong_bull
+        & ha["HA_Close"].gt(price_basis)
+        & ha["HA_Close"].shift(1).lt(price_basis.shift(1))
+        & ha["HA_Close"].shift(2).lt(price_basis.shift(2))
+        & prev2_high_max.lt(high)
+    ).fillna(False)
+    mid_bb_sell_setup = (
+        strong_bear
+        & ha["HA_Close"].lt(price_basis)
+        & ha["HA_Close"].shift(1).gt(price_basis.shift(1))
+        & ha["HA_Close"].shift(2).gt(price_basis.shift(2))
+        & prev2_low_min.gt(low)
+    ).fillna(False)
+
     buy_breakout = ha_above_bb
     sell_breakout = ha_below_bb
 
@@ -1112,6 +1138,8 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["strong_bear"] = strong_bear.astype(int)
     out["prev_ha_strong"] = prev_ha_strong.astype(int)
     out["prev_ha_close_inside_bb"] = prev_ha_close_inside_bb.astype(int)
+    out["mid_bb_buy_setup"] = mid_bb_buy_setup.astype(int)
+    out["mid_bb_sell_setup"] = mid_bb_sell_setup.astype(int)
     out["buy_breakout"] = buy_breakout.astype(int)
     out["sell_breakout"] = sell_breakout.astype(int)
     out["new_buy_setup"] = new_buy_setup.astype(int)
@@ -1447,6 +1475,43 @@ def run_scanner(
     return outputs
 
 
+def scan_mid_bb_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
+    """1D/2D/3D/1W/1M/6M par mid-BB reversal setup dhoondta hai --
+    strong HA candle jo middle BB cross karke, pichli 2 candles ke
+    high/low se aage nikal jaaye."""
+    groups = timeframe_groups(NEW_PATTERN_TIMEFRAMES)
+    rows: List[Dict[str, Any]] = []
+
+    for nse, yf_sym in tqdm(list(zip(syms_nse, syms_yf)), desc="Mid-BB scan", unit="stock"):
+        for (interval, period), tf_list in groups.items():
+            raw = fetch_base(yf_sym, interval, period, auto_adjust=False)
+            if raw is None:
+                time.sleep(DOWNLOAD_DELAY)
+                continue
+
+            for tf in tf_list:
+                try:
+                    df = _resample_ohlcv(raw, TIMEFRAMES[tf]["resample"])
+                    if len(df) < MIN_BARS_SCAN:
+                        continue
+
+                    sig = compute_scan_frame(df)
+                    if sig.empty:
+                        continue
+
+                    last = sig.iloc[-1]
+                    if bool(last.get("mid_bb_buy_setup", 0)) or bool(last.get("mid_bb_sell_setup", 0)):
+                        side = "BUY" if bool(last.get("mid_bb_buy_setup", 0)) else "SELL"
+                        common = row_common(nse, tf, sig, last)
+                        rows.append({**common, "Side": side})
+                except Exception as e:
+                    print(f"Mid-BB scan skip {nse} {tf}: {e}")
+
+            time.sleep(DOWNLOAD_DELAY)
+
+    return pd.DataFrame(rows)
+
+
 def export_excel(outputs: Dict[str, pd.DataFrame]) -> Optional[str]:
     if not EXPORT_EXCEL:
         return None
@@ -1480,14 +1545,34 @@ def main() -> None:
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
+        mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if now.hour >= 15 else []
+
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
-        if not due_tfs:
+        print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
+
+        if not due_tfs and not mid_bb_due_tfs:
             print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
             export_status_only(scanned_str)
         else:
-            outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
+            if due_tfs:
+                outputs = run_scanner(syms_nse, syms_yf, scan_timeframes=due_tfs)
+            else:
+                outputs = {
+                    "Gem_Setup_Intraday": pd.DataFrame(),
+                    "Gem_Setup_HigherTF": pd.DataFrame(),
+                    "Price_BB_Squeeze": pd.DataFrame(),
+                    "RSI_BB_Squeeze": pd.DataFrame(),
+                    "Both_Squeeze": pd.DataFrame(),
+                    "HA_Strong_Setup": pd.DataFrame(),
+                    "New_HA_Squeeze_Setup": pd.DataFrame(),
+                }
+
+            outputs["Mid_BB_Reversal_Setup"] = (
+                scan_mid_bb_setup(syms_nse, syms_yf) if mid_bb_due_tfs else pd.DataFrame()
+            )
+
             export_excel(outputs)
-            export_to_google_sheet(outputs, scanned_str, due_tfs)
+            export_to_google_sheet(outputs, scanned_str, due_tfs, mid_bb_due_tfs)
 
     print("\nDone.")
 
