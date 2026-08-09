@@ -304,8 +304,24 @@ def notify_discord(outputs: dict) -> None:
     if per_tf_rows:
         print(f"Discord per-TF notify sent for: {', '.join(per_tf_rows.keys())}")
 
+def notify_discord_heartbeat(scanned_at: str) -> None:
+    """Skip-run (koi TF due nahi tha) mein bhi ek chhota confirmation
+    bhejta hai #general mein, taaki pata chale system chal raha hai --
+    Sheet ke Status tab jaisa hi behavior."""
+    if not DISCORD_WEBHOOK_URL:
+        return
+    content = f"Scan hua ({scanned_at}) -- koi naya signal nahi mila is cycle mein."
+    try:
+        resp = requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30)
+        if resp.status_code not in (200, 204):
+            print(f"Discord heartbeat failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"Discord heartbeat error: {e}")
+
+
 def export_status_only(scanned_at: str) -> None:
     _post("Status", [["Current scan time:", scanned_at]])
+    notify_discord_heartbeat(scanned_at)
 
 
 def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list) -> None:
