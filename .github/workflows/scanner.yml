@@ -26,4 +26,15 @@ jobs:
         env:
           APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_5M: ${{ secrets.DISCORD_WEBHOOK_5M }}
+          DISCORD_WEBHOOK_15M: ${{ secrets.DISCORD_WEBHOOK_15M }}
+          DISCORD_WEBHOOK_30M: ${{ secrets.DISCORD_WEBHOOK_30M }}
+          DISCORD_WEBHOOK_45M: ${{ secrets.DISCORD_WEBHOOK_45M }}
+          DISCORD_WEBHOOK_1H: ${{ secrets.DISCORD_WEBHOOK_1H }}
+          DISCORD_WEBHOOK_75M: ${{ secrets.DISCORD_WEBHOOK_75M }}
+          DISCORD_WEBHOOK_2H: ${{ secrets.DISCORD_WEBHOOK_2H }}
+          DISCORD_WEBHOOK_150M: ${{ secrets.DISCORD_WEBHOOK_150M }}
+          DISCORD_WEBHOOK_3H: ${{ secrets.DISCORD_WEBHOOK_3H }}
+          DISCORD_WEBHOOK_4H: ${{ secrets.DISCORD_WEBHOOK_4H }}
+          DISCORD_WEBHOOK_HIGHER: ${{ secrets.DISCORD_WEBHOOK_HIGHER }}
         run: python gem_scanner.py
