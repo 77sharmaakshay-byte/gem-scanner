@@ -1619,6 +1619,7 @@ def main() -> None:
 
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
+    print(f"DEBUG: computed 'now' = {now} | now.hour = {now.hour} | LOCAL_TIMEZONE = {LOCAL_TIMEZONE}")
 
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
