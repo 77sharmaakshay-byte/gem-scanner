@@ -34,22 +34,25 @@ MIDBB_TF_WEBHOOKS = {
     "6M": os.environ.get("DISCORD_WEBHOOK_MIDBB_6M"),
 }
 
-# RSI_BB_Cross_Setup ka apna dedicated set -- iska bhi kisi se mix nahi hota
+# RSI_BB_Cross_Setup -- sirf 2 channels: ek intraday, ek higher-TF (kisi
+# aur section se mix nahi hota)
+_RSICROSS_INTRADAY_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_RSICROSS_INTRADAY")
+_RSICROSS_HIGHER_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_RSICROSS_HIGHER")
 RSICROSS_TF_WEBHOOKS = {
-    "30m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_30M"),
-    "45m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_45M"),
-    "1H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1H"),
-    "2H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_2H"),
-    "75m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_75M"),
-    "90m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_90M"),
-    "150m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_150M"),
-    "3H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_3H"),
-    "4H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_4H"),
-    "1D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1D"),
-    "2D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_2D"),
-    "3D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_3D"),
-    "1W": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1W"),
-    "1M": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1M"),
+    "30m": _RSICROSS_INTRADAY_WEBHOOK,
+    "45m": _RSICROSS_INTRADAY_WEBHOOK,
+    "1H": _RSICROSS_INTRADAY_WEBHOOK,
+    "2H": _RSICROSS_INTRADAY_WEBHOOK,
+    "75m": _RSICROSS_INTRADAY_WEBHOOK,
+    "90m": _RSICROSS_INTRADAY_WEBHOOK,
+    "150m": _RSICROSS_INTRADAY_WEBHOOK,
+    "3H": _RSICROSS_INTRADAY_WEBHOOK,
+    "4H": _RSICROSS_INTRADAY_WEBHOOK,
+    "1D": _RSICROSS_HIGHER_WEBHOOK,
+    "2D": _RSICROSS_HIGHER_WEBHOOK,
+    "3D": _RSICROSS_HIGHER_WEBHOOK,
+    "1W": _RSICROSS_HIGHER_WEBHOOK,
+    "1M": _RSICROSS_HIGHER_WEBHOOK,
 }
 
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
