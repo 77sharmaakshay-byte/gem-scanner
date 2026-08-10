@@ -37,4 +37,10 @@ jobs:
           DISCORD_WEBHOOK_3H: ${{ secrets.DISCORD_WEBHOOK_3H }}
           DISCORD_WEBHOOK_4H: ${{ secrets.DISCORD_WEBHOOK_4H }}
           DISCORD_WEBHOOK_HIGHER: ${{ secrets.DISCORD_WEBHOOK_HIGHER }}
+          DISCORD_WEBHOOK_MIDBB_1D: ${{ secrets.DISCORD_WEBHOOK_MIDBB_1D }}
+          DISCORD_WEBHOOK_MIDBB_2D: ${{ secrets.DISCORD_WEBHOOK_MIDBB_2D }}
+          DISCORD_WEBHOOK_MIDBB_3D: ${{ secrets.DISCORD_WEBHOOK_MIDBB_3D }}
+          DISCORD_WEBHOOK_MIDBB_1W: ${{ secrets.DISCORD_WEBHOOK_MIDBB_1W }}
+          DISCORD_WEBHOOK_MIDBB_1M: ${{ secrets.DISCORD_WEBHOOK_MIDBB_1M }}
+          DISCORD_WEBHOOK_MIDBB_6M: ${{ secrets.DISCORD_WEBHOOK_MIDBB_6M }}
         run: python gem_scanner.py
