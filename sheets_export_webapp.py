@@ -34,8 +34,26 @@ MIDBB_TF_WEBHOOKS = {
     "6M": os.environ.get("DISCORD_WEBHOOK_MIDBB_6M"),
 }
 
+# RSI_BB_Cross_Setup ka apna dedicated set -- iska bhi kisi se mix nahi hota
+RSICROSS_TF_WEBHOOKS = {
+    "30m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_30M"),
+    "45m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_45M"),
+    "1H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1H"),
+    "2H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_2H"),
+    "75m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_75M"),
+    "90m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_90M"),
+    "150m": os.environ.get("DISCORD_WEBHOOK_RSICROSS_150M"),
+    "3H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_3H"),
+    "4H": os.environ.get("DISCORD_WEBHOOK_RSICROSS_4H"),
+    "1D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1D"),
+    "2D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_2D"),
+    "3D": os.environ.get("DISCORD_WEBHOOK_RSICROSS_3D"),
+    "1W": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1W"),
+    "1M": os.environ.get("DISCORD_WEBHOOK_RSICROSS_1M"),
+}
+
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
-ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D", "1W", "1M", "6M"]
+ALL_TF_ORDER = INTRADAY_TF_ORDER + ["90m", "1D", "2D", "3D", "1W", "1M", "6M"]
 
 DATA_HEADER = ["Symbol", "SQ%", "RSI Width"]
 NEW_SETUP_HEADER = ["Symbol", "Side", "Close", "SQ%"]
@@ -300,12 +318,18 @@ def notify_discord(outputs: dict) -> None:
     for section, df in non_empty.items():
         if "TF" not in df.columns:
             continue
-        webhook_map = MIDBB_TF_WEBHOOKS if section == "Mid_BB_Reversal_Setup" else DISCORD_TF_WEBHOOKS
+        if section == "Mid_BB_Reversal_Setup":
+            webhook_map = MIDBB_TF_WEBHOOKS
+        elif section == "RSI_BB_Cross_Setup":
+            webhook_map = RSICROSS_TF_WEBHOOKS
+        else:
+            webhook_map = DISCORD_TF_WEBHOOKS
+        dedicated = section in ("Mid_BB_Reversal_Setup", "RSI_BB_Cross_Setup")
         for tf, g in df.groupby("TF"):
             webhook = webhook_map.get(tf)
             if not webhook:
                 continue
-            key = f"{section}:{tf}" if section == "Mid_BB_Reversal_Setup" else tf
+            key = f"{section}:{tf}" if dedicated else tf
             if key not in per_tf_rows:
                 per_tf_rows[key] = (webhook, [])
             # Har section ka apna header line -- chahe TF-bucket pehle se ho
@@ -341,8 +365,15 @@ def export_status_only(scanned_at: str) -> None:
     notify_discord_heartbeat(scanned_at)
 
 
-def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list, mid_bb_due_tfs: list = None) -> None:
+def export_to_google_sheet(
+    outputs: dict,
+    scanned_at: str,
+    due_tfs: list,
+    mid_bb_due_tfs: list = None,
+    rsi_cross_due_tfs: list = None,
+) -> None:
     mid_bb_due_tfs = mid_bb_due_tfs or []
+    rsi_cross_due_tfs = rsi_cross_due_tfs or []
     for section, df in outputs.items():
         if section == "Gem_Setup_Intraday":
             body = _build_intraday_rows(df, due_tfs, scanned_at)
@@ -350,6 +381,8 @@ def export_to_google_sheet(outputs: dict, scanned_at: str, due_tfs: list, mid_bb
             body = _build_new_setup_rows(df, due_tfs, scanned_at)
         elif section == "Mid_BB_Reversal_Setup":
             body = _build_full_carryforward_rows(section, df, mid_bb_due_tfs, scanned_at)
+        elif section == "RSI_BB_Cross_Setup":
+            body = _build_full_carryforward_rows(section, df, rsi_cross_due_tfs, scanned_at)
         else:
             body = _build_full_carryforward_rows(section, df, due_tfs, scanned_at)
         _post(section, body)
