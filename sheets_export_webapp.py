@@ -307,11 +307,14 @@ def notify_discord(outputs: dict) -> None:
                 continue
             key = f"{section}:{tf}" if section == "Mid_BB_Reversal_Setup" else tf
             if key not in per_tf_rows:
-                per_tf_rows[key] = (webhook, [f"**{section}**"])
+                per_tf_rows[key] = (webhook, [])
+            # Har section ka apna header line -- chahe TF-bucket pehle se ho
+            per_tf_rows[key][1].append(f"**{section}**")
             for _, r in g.head(10).iterrows():
                 per_tf_rows[key][1].append(_line(r))
             if len(g) > 10:
                 per_tf_rows[key][1].append(f"...+{len(g) - 10} more")
+            per_tf_rows[key][1].append("")
 
     for key, (webhook, lines) in per_tf_rows.items():
         _send(webhook, "\n".join(lines).strip())
