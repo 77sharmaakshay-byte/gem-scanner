@@ -962,12 +962,15 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     if not HA_SETUP_REQUIRES_SQUEEZE:
         accepted_squeeze = pd.Series(True, index=df.index)
 
-    ha_buy_setup = (strong_bull & accepted_squeeze) | buy_entry_seed | entry_signal.isin([3, 5])
-    ha_sell_setup = (strong_bear & accepted_squeeze) | sell_entry_seed | entry_signal.isin([4, 6])
+    # Sirf uss exact bar pe flag hota hai jismein candle khud strong ho --
+    # entry_signal ka multi-bar "still valid" window yahan intentionally
+    # nahi use kiya, taaki koi purani strong candle ka carryover na dikhe.
+    ha_buy_setup = (strong_bull & accepted_squeeze) | buy_entry_seed
+    ha_sell_setup = (strong_bear & accepted_squeeze) | sell_entry_seed
 
     if HA_SETUP_REQUIRES_BB_BREAKOUT:
-        ha_buy_setup = (ha_buy_setup & buy_breakout) | entry_signal.isin([3, 5])
-        ha_sell_setup = (ha_sell_setup & sell_breakout) | entry_signal.isin([4, 6])
+        ha_buy_setup = ha_buy_setup & buy_breakout
+        ha_sell_setup = ha_sell_setup & sell_breakout
     if PREV_HA_NOT_STRONG_FILTER:
         ha_buy_setup = ha_buy_setup & ~prev_ha_strong
         ha_sell_setup = ha_sell_setup & ~prev_ha_strong
@@ -1458,7 +1461,6 @@ def run_scanner(
         "Price_BB_Squeeze": pd.DataFrame(visible_squeeze_rows(price_rows)),
         "RSI_BB_Squeeze": pd.DataFrame(visible_squeeze_rows(rsi_rows)),
         "Both_Squeeze": pd.DataFrame(visible_squeeze_rows(both_rows)),
-        "HA_Strong_Setup": pd.DataFrame(visible_squeeze_rows(ha_rows)),
         "New_HA_Squeeze_Setup": pd.DataFrame(visible_squeeze_rows(new_setup_rows)),
     }
 
@@ -1469,7 +1471,6 @@ def run_scanner(
         f"Price={len(outputs['Price_BB_Squeeze'])} | "
         f"RSI={len(outputs['RSI_BB_Squeeze'])} | "
         f"Both={len(outputs['Both_Squeeze'])} | "
-        f"HA Strong={len(outputs['HA_Strong_Setup'])} | "
         f"New Setup={len(outputs['New_HA_Squeeze_Setup'])}"
     )
     return outputs
@@ -1563,7 +1564,6 @@ def main() -> None:
                     "Price_BB_Squeeze": pd.DataFrame(),
                     "RSI_BB_Squeeze": pd.DataFrame(),
                     "Both_Squeeze": pd.DataFrame(),
-                    "HA_Strong_Setup": pd.DataFrame(),
                     "New_HA_Squeeze_Setup": pd.DataFrame(),
                 }
 
