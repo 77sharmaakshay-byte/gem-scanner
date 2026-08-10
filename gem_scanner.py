@@ -116,6 +116,7 @@ FRESHNESS_THRESHOLDS: Dict[str, Tuple[int, int]] = {
     "45m": (3, 48),
     "1H": (4, 72),
     "75m": (4, 72),
+    "90m": (4, 72),
     "2H": (6, 96),
     "150m": (8, 120),
     "3H": (8, 120),
@@ -146,6 +147,7 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
     "45m": {"interval": "15m", "scan_period": "60d", "resample": "45min", "tf_days": 45 / 1440},
     "1H": {"interval": "15m", "scan_period": "60d", "resample": "60min", "tf_days": 1 / 24},
     "75m": {"interval": "15m", "scan_period": "60d", "resample": "75min", "tf_days": 75 / 1440},
+    "90m": {"interval": "15m", "scan_period": "60d", "resample": "90min", "tf_days": 90 / 1440},
     "2H": {"interval": "15m", "scan_period": "60d", "resample": "120min", "tf_days": 2 / 24},
     "150m": {"interval": "15m", "scan_period": "60d", "resample": "150min", "tf_days": 150 / 1440},
     "3H": {"interval": "15m", "scan_period": "60d", "resample": "180min", "tf_days": 3 / 24},
@@ -214,6 +216,37 @@ def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
     if nxt > market_close:
         return None
     return nxt
+
+
+RSI_CROSS_INTRADAY_TFS = ["30m", "45m", "1H", "2H", "75m", "90m", "150m", "3H", "4H"]
+RSI_CROSS_HIGHER_TFS = ["1D", "2D", "3D", "1W", "1M"]
+RSI_CROSS_TIMEFRAMES = RSI_CROSS_INTRADAY_TFS + RSI_CROSS_HIGHER_TFS
+
+
+def rsi_cross_due_now() -> List[str]:
+    """RSI-BB Cross setup ke liye apna dedicated due-check -- intraday wale
+    TFs har apne boundary par, higher wale sirf 3 PM ke baad."""
+    TOLERANCE_MINUTES = 2
+    now = _local_now_naive()
+    open_dt = now.normalize() + pd.Timedelta(minutes=MARKET_OPEN_OFFSET_MINUTES)
+    elapsed = int((now - open_dt).total_seconds() // 60)
+    if elapsed < 0:
+        return []
+
+    due: List[str] = []
+    for tf in RSI_CROSS_INTRADAY_TFS:
+        tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
+        if tf_minutes <= 0:
+            continue
+        remainder = elapsed % tf_minutes
+        close_to_boundary = remainder <= TOLERANCE_MINUTES or (tf_minutes - remainder) <= TOLERANCE_MINUTES
+        if close_to_boundary:
+            due.append(tf)
+
+    if now.hour >= 15:
+        due += RSI_CROSS_HIGHER_TFS
+
+    return due
 
 
 SYMBOL_RENAMES = {
@@ -811,6 +844,12 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     rsi_squeeze_ready = _recent_true(rsi_squeeze_now | rsi_tight, RSI_BB_PERSIST_BARS)
     rsi_cross_upper = _cross_over(rsi, rsi_upper)
     rsi_cross_lower = _cross_under(rsi, rsi_lower)
+
+    rsi_prev_inside_bb = (
+        rsi.shift(1).le(rsi_upper.shift(1)) & rsi.shift(1).ge(rsi_lower.shift(1))
+    ).fillna(False)
+    rsi_bb_cross_buy = (rsi.gt(rsi_upper) & rsi_prev_inside_bb).fillna(False)
+    rsi_bb_cross_sell = (rsi.lt(rsi_lower) & rsi_prev_inside_bb).fillna(False)
     recent_cross_upper = _bars_since_true(rsi_cross_upper).le(RSI_BB_PERSIST_BARS)
     recent_cross_lower = _bars_since_true(rsi_cross_lower).le(RSI_BB_PERSIST_BARS)
     rsi_above_upper = rsi.gt(rsi_upper).fillna(False)
@@ -1106,6 +1145,8 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["rsi_tight"] = rsi_tight.astype(int)
     out["rsi_cross_upper"] = rsi_cross_upper.astype(int)
     out["rsi_cross_lower"] = rsi_cross_lower.astype(int)
+    out["rsi_bb_cross_buy"] = rsi_bb_cross_buy.astype(int)
+    out["rsi_bb_cross_sell"] = rsi_bb_cross_sell.astype(int)
     out["rsi_explosive"] = rsi_explosive
 
     out["price_bb_basis"] = price_basis
@@ -1476,6 +1517,42 @@ def run_scanner(
     return outputs
 
 
+def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
+    """RSI-BB Cross setup -- current RSI band se bahar nikla (upar ya neeche),
+    aur pichli candle ka RSI band ke andar (upper aur lower ke beech) tha."""
+    groups = timeframe_groups(RSI_CROSS_TIMEFRAMES)
+    rows: List[Dict[str, Any]] = []
+
+    for nse, yf_sym in tqdm(list(zip(syms_nse, syms_yf)), desc="RSI-BB cross scan", unit="stock"):
+        for (interval, period), tf_list in groups.items():
+            raw = fetch_base(yf_sym, interval, period, auto_adjust=False)
+            if raw is None:
+                time.sleep(DOWNLOAD_DELAY)
+                continue
+
+            for tf in tf_list:
+                try:
+                    df = _resample_ohlcv(raw, TIMEFRAMES[tf]["resample"])
+                    if len(df) < MIN_BARS_SCAN:
+                        continue
+
+                    sig = compute_scan_frame(df)
+                    if sig.empty:
+                        continue
+
+                    last = sig.iloc[-1]
+                    if bool(last.get("rsi_bb_cross_buy", 0)) or bool(last.get("rsi_bb_cross_sell", 0)):
+                        side = "BUY" if bool(last.get("rsi_bb_cross_buy", 0)) else "SELL"
+                        common = row_common(nse, tf, sig, last)
+                        rows.append({**common, "Side": side})
+                except Exception as e:
+                    print(f"RSI-BB cross scan skip {nse} {tf}: {e}")
+
+            time.sleep(DOWNLOAD_DELAY)
+
+    return pd.DataFrame(rows)
+
+
 def scan_mid_bb_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
     """1D/2D/3D/1W/1M/6M par mid-BB reversal setup dhoondta hai --
     strong HA candle jo middle BB cross karke, pichli 2 candles ke
@@ -1547,11 +1624,13 @@ def main() -> None:
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if now.hour >= 15 else []
+        rsi_cross_due_tfs = rsi_cross_due_now()
 
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
+        print(f"RSI-BB cross due this run: {', '.join(rsi_cross_due_tfs) if rsi_cross_due_tfs else 'NONE'}")
 
-        if not due_tfs and not mid_bb_due_tfs:
+        if not due_tfs and not mid_bb_due_tfs and not rsi_cross_due_tfs:
             print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
             export_status_only(scanned_str)
         else:
@@ -1570,9 +1649,12 @@ def main() -> None:
             outputs["Mid_BB_Reversal_Setup"] = (
                 scan_mid_bb_setup(syms_nse, syms_yf) if mid_bb_due_tfs else pd.DataFrame()
             )
+            outputs["RSI_BB_Cross_Setup"] = (
+                scan_rsi_cross_setup(syms_nse, syms_yf) if rsi_cross_due_tfs else pd.DataFrame()
+            )
 
             export_excel(outputs)
-            export_to_google_sheet(outputs, scanned_str, due_tfs, mid_bb_due_tfs)
+            export_to_google_sheet(outputs, scanned_str, due_tfs, mid_bb_due_tfs, rsi_cross_due_tfs)
 
     print("\nDone.")
 
