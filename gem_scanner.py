@@ -1619,13 +1619,24 @@ def main() -> None:
 
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
-    print(f"DEBUG: computed 'now' = {now} | now.hour = {now.hour} | LOCAL_TIMEZONE = {LOCAL_TIMEZONE}")
 
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
-        mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if now.hour >= 15 else []
+
+        # Higher-TF/EOD scans (Mid-BB reversal, RSI-BB cross ka higher-TF hissa)
+        # ab do situations mein chalenge:
+        #   1) Same din 3 PM ke baad (normal scheduled EOD run), YA
+        #   2) Jab bhi intraday scan due na ho (matlab market band hai --
+        #      raat, subah market khulne se pehle, kabhi bhi manual run) --
+        #      taaki "market band hone ke baad" kabhi bhi chalao to
+        #      pichla EOD data refresh ho jaaye, khaali na dikhe.
+        is_eod_window = now.hour >= 15 or not due_tfs
+
+        mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
+        if is_eod_window:
+            rsi_cross_due_tfs = list(dict.fromkeys(rsi_cross_due_tfs + RSI_CROSS_HIGHER_TFS))
 
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
