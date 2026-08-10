@@ -24,6 +24,16 @@ DISCORD_TF_WEBHOOKS = {
     "3D": os.environ.get("DISCORD_WEBHOOK_HIGHER"),
 }
 
+# Mid_BB_Reversal_Setup ka apna dedicated set -- kisi doosre section se mix nahi hota
+MIDBB_TF_WEBHOOKS = {
+    "1D": os.environ.get("DISCORD_WEBHOOK_MIDBB_1D"),
+    "2D": os.environ.get("DISCORD_WEBHOOK_MIDBB_2D"),
+    "3D": os.environ.get("DISCORD_WEBHOOK_MIDBB_3D"),
+    "1W": os.environ.get("DISCORD_WEBHOOK_MIDBB_1W"),
+    "1M": os.environ.get("DISCORD_WEBHOOK_MIDBB_1M"),
+    "6M": os.environ.get("DISCORD_WEBHOOK_MIDBB_6M"),
+}
+
 INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 ALL_TF_ORDER = INTRADAY_TF_ORDER + ["1D", "2D", "3D", "1W", "1M", "6M"]
 
@@ -284,22 +294,26 @@ def notify_discord(outputs: dict) -> None:
         print(f"Discord general notify sent ({len(non_empty)} sections)")
 
     # 2) Per-timeframe channels -- har TF ka apna dedicated channel.
-    per_tf_rows: Dict[str, List[str]] = {}
+    #    Mid_BB_Reversal_Setup apne alag webhook set se route hota hai,
+    #    taaki baaki sections ke saath mix na ho.
+    per_tf_rows: Dict[str, tuple] = {}  # key -> (webhook, lines)
     for section, df in non_empty.items():
         if "TF" not in df.columns:
             continue
+        webhook_map = MIDBB_TF_WEBHOOKS if section == "Mid_BB_Reversal_Setup" else DISCORD_TF_WEBHOOKS
         for tf, g in df.groupby("TF"):
-            webhook = DISCORD_TF_WEBHOOKS.get(tf)
+            webhook = webhook_map.get(tf)
             if not webhook:
                 continue
-            bucket = per_tf_rows.setdefault(tf, [f"**{section}**"])
+            key = f"{section}:{tf}" if section == "Mid_BB_Reversal_Setup" else tf
+            if key not in per_tf_rows:
+                per_tf_rows[key] = (webhook, [f"**{section}**"])
             for _, r in g.head(10).iterrows():
-                bucket.append(_line(r))
+                per_tf_rows[key][1].append(_line(r))
             if len(g) > 10:
-                bucket.append(f"...+{len(g) - 10} more")
+                per_tf_rows[key][1].append(f"...+{len(g) - 10} more")
 
-    for tf, lines in per_tf_rows.items():
-        webhook = DISCORD_TF_WEBHOOKS.get(tf)
+    for key, (webhook, lines) in per_tf_rows.items():
         _send(webhook, "\n".join(lines).strip())
     if per_tf_rows:
         print(f"Discord per-TF notify sent for: {', '.join(per_tf_rows.keys())}")
