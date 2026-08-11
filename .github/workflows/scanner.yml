@@ -24,6 +24,7 @@ jobs:
 
       - name: Run scanner
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_5M: ${{ secrets.DISCORD_WEBHOOK_5M }}
