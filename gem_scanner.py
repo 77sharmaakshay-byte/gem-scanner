@@ -58,8 +58,8 @@ SQUEEZE_HISTORY_COUNT = 5
 SQUEEZE_MOVE_LOOKAHEAD_BARS = 10
 GEM_FIRE_TOLERANCE_BARS = 2
 
-RSI_LENGTH = 10
-RSI_BB_LENGTH = 14
+RSI_LENGTH = 12
+RSI_BB_LENGTH = 20
 RSI_BB_MULT = 2.0
 RSI_MIN_CONTRACTION = 55.0
 RSI_BB_PERSIST_BARS = 2
@@ -152,16 +152,16 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
     "150m": {"interval": "15m", "scan_period": "60d", "resample": "150min", "tf_days": 150 / 1440},
     "3H": {"interval": "15m", "scan_period": "60d", "resample": "180min", "tf_days": 3 / 24},
     "4H": {"interval": "15m", "scan_period": "60d", "resample": "240min", "tf_days": 4 / 24},
-    "1D": {"interval": "1d", "scan_period": "10y", "resample": None, "tf_days": 1},
-    "2D": {"interval": "1d", "scan_period": "10y", "resample": "2D", "tf_days": 2},
-    "3D": {"interval": "1d", "scan_period": "10y", "resample": "3D", "tf_days": 3},
-    "4D": {"interval": "1d", "scan_period": "10y", "resample": "4D", "tf_days": 4},
-    "7D": {"interval": "1d", "scan_period": "10y", "resample": "7D", "tf_days": 7},
-    "9D": {"interval": "1d", "scan_period": "10y", "resample": "9D", "tf_days": 9},
-    "1W": {"interval": "1wk", "scan_period": "10y", "resample": None, "tf_days": 7},
-    "2W": {"interval": "1wk", "scan_period": "10y", "resample": "2W-MON", "tf_days": 14},
-    "3W": {"interval": "1wk", "scan_period": "10y", "resample": "3W-MON", "tf_days": 21},
-    "4W": {"interval": "1wk", "scan_period": "10y", "resample": "4W-MON", "tf_days": 28},
+    "1D": {"interval": "1d", "scan_period": "max", "resample": None, "tf_days": 1},
+    "2D": {"interval": "1d", "scan_period": "max", "resample": "2D", "tf_days": 2},
+    "3D": {"interval": "1d", "scan_period": "max", "resample": "3D", "tf_days": 3},
+    "4D": {"interval": "1d", "scan_period": "max", "resample": "4D", "tf_days": 4},
+    "7D": {"interval": "1d", "scan_period": "max", "resample": "7D", "tf_days": 7},
+    "9D": {"interval": "1d", "scan_period": "max", "resample": "9D", "tf_days": 9},
+    "1W": {"interval": "1wk", "scan_period": "max", "resample": None, "tf_days": 7},
+    "2W": {"interval": "1wk", "scan_period": "max", "resample": "2W-MON", "tf_days": 14},
+    "3W": {"interval": "1wk", "scan_period": "max", "resample": "3W-MON", "tf_days": 21},
+    "4W": {"interval": "1wk", "scan_period": "max", "resample": "4W-MON", "tf_days": 28},
     "1M": {"interval": "1mo", "scan_period": "max", "resample": None, "tf_days": 30},
     "6M": {"interval": "1mo", "scan_period": "max", "resample": "6MO", "tf_days": 180},
 }
