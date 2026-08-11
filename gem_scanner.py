@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import random
 import time
 import warnings
@@ -136,7 +137,7 @@ FRESHNESS_THRESHOLDS: Dict[str, Tuple[int, int]] = {
 }
 
 
-INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
+INTRADAY_TIMEFRAMES = ["15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 HIGHER_TIMEFRAMES = ["1D", "2D", "3D"]
 NEW_PATTERN_TIMEFRAMES = ["1D", "2D", "3D", "1W", "1M", "6M"]
 
@@ -661,6 +662,17 @@ def _resample_ohlcv(df: pd.DataFrame, rule: Optional[str]) -> pd.DataFrame:
 
     trading_days = _trading_day_group_size(rule)
     if trading_days:
+        # Sirf poore-complete groups rakho -- agar aakhri group mein
+        # trading_days se kam rows hain, matlab woh abhi ban hi raha hai
+        # (jaise TradingView ka live/incomplete multi-day candle) -- use
+        # poori tarah drop kar do, taaki hamesha sirf fully-closed
+        # candles hi aage jaayein.
+        n_complete_groups = len(work) // trading_days
+        usable_rows = n_complete_groups * trading_days
+        if usable_rows == 0:
+            return pd.DataFrame(columns=work.columns)
+        work = work.iloc[:usable_rows]
+
         groups = np.arange(len(work)) // trading_days
         resampled = work.groupby(groups).agg(agg)
         last_index = work.index.to_series().groupby(groups).last()
@@ -936,7 +948,7 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     ha_max_body = pd.concat([ha["HA_Open"], ha["HA_Close"]], axis=1).max(axis=1)
     lower_wick = ha_min_body - ha["HA_Low"]
     upper_wick = ha["HA_High"] - ha_max_body
-    tolerance = ((ha["HA_High"] - ha["HA_Low"]) * 0.02).fillna(0.0)
+    tolerance = pd.Series(0.0, index=df.index)  # bilkul zero-wick, koi tolerance nahi
 
     strong_bull = (
         ha["HA_Close"].gt(ha["HA_Open"])
@@ -1646,13 +1658,13 @@ def main() -> None:
         due_tfs = timeframes_due_now()
 
         # Higher-TF/EOD scans (Mid-BB reversal, RSI-BB cross ka higher-TF hissa)
-        # ab do situations mein chalenge:
+        # sirf do situations mein chalenge:
         #   1) Same din 3 PM ke baad (normal scheduled EOD run), YA
-        #   2) Jab bhi intraday scan due na ho (matlab market band hai --
-        #      raat, subah market khulne se pehle, kabhi bhi manual run) --
-        #      taaki "market band hone ke baad" kabhi bhi chalao to
-        #      pichla EOD data refresh ho jaaye, khaali na dikhe.
-        is_eod_window = now.hour >= 15 or not due_tfs
+        #   2) Jab bhi AAP khud "Run workflow" se manually/forcefully
+        #      trigger karo -- automatic (scheduled) runs mein market
+        #      hours ke andar yeh baar-baar nahi chalega.
+        is_manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
+        is_eod_window = now.hour >= 15 or is_manual_run
 
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
