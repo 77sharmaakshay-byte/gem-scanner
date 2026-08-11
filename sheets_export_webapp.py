@@ -55,7 +55,7 @@ RSICROSS_TF_WEBHOOKS = {
     "1M": _RSICROSS_HIGHER_WEBHOOK,
 }
 
-INTRADAY_TF_ORDER = ["5m", "15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
+INTRADAY_TF_ORDER = ["15m", "30m", "45m", "1H", "75m", "2H", "150m", "3H", "4H"]
 ALL_TF_ORDER = INTRADAY_TF_ORDER + ["90m", "1D", "2D", "3D", "1W", "1M", "6M"]
 
 DATA_HEADER = ["Symbol", "SQ%", "RSI Width"]
