@@ -629,6 +629,38 @@ def _intraday_offset(rule: str) -> Optional[str]:
     return f"{offset_minutes}min"
 
 
+_MASTER_CALENDAR_CACHE: Dict[str, pd.DatetimeIndex] = {}
+
+
+def get_master_trading_calendar() -> pd.DatetimeIndex:
+    """NIFTY 50 index (^NSEI) ka poora trading-date history use karke ek
+    shared/master NSE trading-session calendar banata hai -- taaki HAR
+    stock ka 2D/3D/4D/7D grouping isi ek common calendar se anchor ho,
+    TradingView jaisa, na ki jis stock ka jab data start hota hai wahan se."""
+    if "dates" in _MASTER_CALENDAR_CACHE:
+        return _MASTER_CALENDAR_CACHE["dates"]
+
+    dates = pd.DatetimeIndex([])
+    try:
+        idx_df = yf.download(
+            "^NSEI",
+            period="max",
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
+            actions=False,
+            threads=False,
+        )
+        idx_df = _flatten(idx_df).dropna(subset=["Close"])
+        if not idx_df.empty:
+            dates = pd.DatetimeIndex(idx_df.index).normalize().sort_values().unique()
+    except Exception as e:
+        print(f"Master calendar fetch failed (falling back to per-symbol anchor): {e}")
+
+    _MASTER_CALENDAR_CACHE["dates"] = dates
+    return dates
+
+
 def _trading_day_group_size(rule: str) -> Optional[int]:
     r = str(rule).strip().upper()
     if r.endswith("D"):
@@ -662,21 +694,37 @@ def _resample_ohlcv(df: pd.DataFrame, rule: Optional[str]) -> pd.DataFrame:
 
     trading_days = _trading_day_group_size(rule)
     if trading_days:
-        # Sirf poore-complete groups rakho -- agar aakhri group mein
-        # trading_days se kam rows hain, matlab woh abhi ban hi raha hai
-        # (jaise TradingView ka live/incomplete multi-day candle) -- use
-        # poori tarah drop kar do, taaki hamesha sirf fully-closed
-        # candles hi aage jaayein.
-        n_complete_groups = len(work) // trading_days
-        usable_rows = n_complete_groups * trading_days
-        if usable_rows == 0:
-            return pd.DataFrame(columns=work.columns)
-        work = work.iloc[:usable_rows]
+        # Shared master calendar (NIFTY 50 se) use karke har date ka
+        # "trading session number" nikalo -- taaki grouping hamesha ek
+        # common, TradingView-jaisi anchor se ho, is stock ke apne data
+        # ki starting row se nahi.
+        calendar = get_master_trading_calendar()
+        work_dates = pd.DatetimeIndex(work.index).normalize()
 
-        groups = np.arange(len(work)) // trading_days
+        session_numbers: Optional[np.ndarray] = None
+        if len(calendar) > 0:
+            positions = calendar.searchsorted(work_dates)
+            valid = (positions < len(calendar)) & (calendar[np.clip(positions, 0, len(calendar) - 1)] == work_dates)
+            if valid.all():
+                session_numbers = positions
+
+        if session_numbers is not None:
+            groups = session_numbers // trading_days
+        else:
+            # Fallback (calendar fetch fail hua ya kuch dates match nahi
+            # hui) -- purana row-position wala tarika, kam se kam stable
+            # to rahega is stock ke liye.
+            groups = np.arange(len(work)) // trading_days
+
         resampled = work.groupby(groups).agg(agg)
         last_index = work.index.to_series().groupby(groups).last()
         resampled.index = pd.DatetimeIndex(last_index.to_numpy())
+
+        # Har group ka size track karo -- taaki aage pata chal sake yeh
+        # candle poori (closed) hai ya abhi ban hi rahi hai (live).
+        group_sizes = pd.Series(groups).value_counts()
+        resampled["_group_size"] = [group_sizes.get(g, 0) for g in sorted(set(groups))]
+
         return resampled.dropna(subset=["Close"])
 
     offset = _intraday_offset(rule)
@@ -1240,28 +1288,44 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["bullish_killer"] = bullish_killer.astype(int)
     out["bearish_killer"] = bearish_killer.astype(int)
     out["triple_squeeze"] = triple_squeeze.astype(int)
+    if "_group_size" in df.columns:
+        out["_group_size"] = df["_group_size"]
     return out
 
 
-def _last_closed_bar(sig: pd.DataFrame, tf: str) -> pd.Series:
-    """Agar aakhri bar abhi 'live/forming' hai (uska poora TF-duration
-    abhi complete nahi hua), to uske pehle wala poora-closed bar return
-    karta hai -- taaki cross/breakout jaisi conditions hamesha ek stable,
-    fully-closed candle par check ho, kisi live/flickering bar par nahi."""
-    if len(sig) < 2:
-        return sig.iloc[-1]
-    tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
-    if tf_minutes <= 0:
-        return sig.iloc[-1]
-    last_ts = _to_local_naive(sig.index[-1])
+def bar_status(sig: pd.DataFrame, tf: str) -> str:
+    """Sig ka AAKHRI bar 'LIVE' (abhi ban raha hai) hai ya 'CLOSED'
+    (poora ho chuka hai), yeh batata hai. Hum hamesha aakhri bar hi use
+    karte hain signal check karne ke liye (taaki trade miss na ho), bas
+    is status se pata chalta hai signal confirm hai ya abhi bhi badal
+    sakta hai."""
+    if sig.empty:
+        return "CLOSED"
+
+    if tf in INTRADAY_TIMEFRAMES:
+        tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
+        if tf_minutes <= 0:
+            return "CLOSED"
+        last_ts = _to_local_naive(sig.index[-1])
+        now = _local_now_naive()
+        # Candles "label=right" hain (index = bar ka end-time).
+        return "CLOSED" if now >= last_ts else "LIVE"
+
+    if "_group_size" in sig.columns:
+        trading_days = _trading_day_group_size(TIMEFRAMES[tf].get("resample") or "")
+        if trading_days:
+            last_size = sig["_group_size"].iloc[-1]
+            if pd.notna(last_size):
+                return "CLOSED" if last_size >= trading_days else "LIVE"
+
+    # 1D / 1W jaise native (bina resample wale) TFs -- market close time
+    # se compare karo.
+    last_date = _to_local_naive(sig.index[-1]).normalize()
     now = _local_now_naive()
-    minutes_since_bar_label = (now - last_ts).total_seconds() / 60
-    # Hamare intraday candles "label=right" (bar ka end-time) use karte hain,
-    # isliye agar abhi tak bar ke end-time se tf_minutes < ho, matlab bar
-    # abhi close hui hi nahi (index khud hi future ka waqt ho sakta hai).
-    if minutes_since_bar_label < 0:
-        return sig.iloc[-2]
-    return sig.iloc[-1]
+    if last_date < now.normalize():
+        return "CLOSED"
+    market_close_today = now.normalize() + pd.Timedelta(minutes=MARKET_CLOSE_OFFSET_MINUTES)
+    return "CLOSED" if now >= market_close_today else "LIVE"
 
 
 def squeeze_type(last: pd.Series) -> str:
@@ -1473,8 +1537,9 @@ def run_scanner(
                     if sig.empty:
                         continue
 
-                    last = _last_closed_bar(sig, tf)
+                    last = sig.iloc[-1]
                     common = row_common(nse, tf, sig, last)
+                    common["Status"] = bar_status(sig, tf)
                     common.update(historical_gem_squeeze_moves(sig, tf))
 
                     price_ready = bool(last.get("price_squeeze_ready", 0))
@@ -1573,11 +1638,11 @@ def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFram
                     if sig.empty:
                         continue
 
-                    last = _last_closed_bar(sig, tf)
+                    last = sig.iloc[-1]
                     if bool(last.get("rsi_bb_cross_buy", 0)) or bool(last.get("rsi_bb_cross_sell", 0)):
                         side = "BUY" if bool(last.get("rsi_bb_cross_buy", 0)) else "SELL"
                         common = row_common(nse, tf, sig, last)
-                        rows.append({**common, "Side": side})
+                        rows.append({**common, "Side": side, "Status": bar_status(sig, tf)})
                 except Exception as e:
                     print(f"RSI-BB cross scan skip {nse} {tf}: {e}")
 
@@ -1610,11 +1675,11 @@ def scan_mid_bb_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
                     if sig.empty:
                         continue
 
-                    last = _last_closed_bar(sig, tf)
+                    last = sig.iloc[-1]
                     if bool(last.get("mid_bb_buy_setup", 0)) or bool(last.get("mid_bb_sell_setup", 0)):
                         side = "BUY" if bool(last.get("mid_bb_buy_setup", 0)) else "SELL"
                         common = row_common(nse, tf, sig, last)
-                        rows.append({**common, "Side": side})
+                        rows.append({**common, "Side": side, "Status": bar_status(sig, tf)})
                 except Exception as e:
                     print(f"Mid-BB scan skip {nse} {tf}: {e}")
 
@@ -1664,7 +1729,7 @@ def main() -> None:
         #      trigger karo -- automatic (scheduled) runs mein market
         #      hours ke andar yeh baar-baar nahi chalega.
         is_manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
-        is_eod_window = now.hour >= 15 or is_manual_run
+        is_eod_window = now.hour >= 16 or is_manual_run
 
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
