@@ -1231,6 +1231,27 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _last_closed_bar(sig: pd.DataFrame, tf: str) -> pd.Series:
+    """Agar aakhri bar abhi 'live/forming' hai (uska poora TF-duration
+    abhi complete nahi hua), to uske pehle wala poora-closed bar return
+    karta hai -- taaki cross/breakout jaisi conditions hamesha ek stable,
+    fully-closed candle par check ho, kisi live/flickering bar par nahi."""
+    if len(sig) < 2:
+        return sig.iloc[-1]
+    tf_minutes = round(TIMEFRAMES[tf]["tf_days"] * 1440)
+    if tf_minutes <= 0:
+        return sig.iloc[-1]
+    last_ts = _to_local_naive(sig.index[-1])
+    now = _local_now_naive()
+    minutes_since_bar_label = (now - last_ts).total_seconds() / 60
+    # Hamare intraday candles "label=right" (bar ka end-time) use karte hain,
+    # isliye agar abhi tak bar ke end-time se tf_minutes < ho, matlab bar
+    # abhi close hui hi nahi (index khud hi future ka waqt ho sakta hai).
+    if minutes_since_bar_label < 0:
+        return sig.iloc[-2]
+    return sig.iloc[-1]
+
+
 def squeeze_type(last: pd.Series) -> str:
     rsi_ready = bool(last.get("rsi_squeeze_ready", 0))
     price_ready = bool(last.get("price_squeeze_ready", 0))
@@ -1440,7 +1461,7 @@ def run_scanner(
                     if sig.empty:
                         continue
 
-                    last = sig.iloc[-1]
+                    last = _last_closed_bar(sig, tf)
                     common = row_common(nse, tf, sig, last)
                     common.update(historical_gem_squeeze_moves(sig, tf))
 
@@ -1540,7 +1561,7 @@ def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFram
                     if sig.empty:
                         continue
 
-                    last = sig.iloc[-1]
+                    last = _last_closed_bar(sig, tf)
                     if bool(last.get("rsi_bb_cross_buy", 0)) or bool(last.get("rsi_bb_cross_sell", 0)):
                         side = "BUY" if bool(last.get("rsi_bb_cross_buy", 0)) else "SELL"
                         common = row_common(nse, tf, sig, last)
@@ -1577,7 +1598,7 @@ def scan_mid_bb_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
                     if sig.empty:
                         continue
 
-                    last = sig.iloc[-1]
+                    last = _last_closed_bar(sig, tf)
                     if bool(last.get("mid_bb_buy_setup", 0)) or bool(last.get("mid_bb_sell_setup", 0)):
                         side = "BUY" if bool(last.get("mid_bb_buy_setup", 0)) else "SELL"
                         common = row_common(nse, tf, sig, last)
