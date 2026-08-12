@@ -219,6 +219,32 @@ def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
     return nxt
 
 
+def is_known_schedule_time(now: pd.Timestamp) -> bool:
+    """Check karta hai ki 'now' hamare defined GitHub Actions cron ke
+    kisi known trigger-slot ke paas (2-min tolerance ke andar) hai ya
+    nahi -- taaki manual runs ko 'normal schedule slot' vs 'unusual
+    off-schedule force-check' mein differentiate kar sakein."""
+    TOLERANCE_MIN = 2
+    hour = now.hour
+    minute = now.minute
+
+    # 9:15 AM market-open slot
+    if hour == 9 and abs(minute - 15) <= TOLERANCE_MIN:
+        return True
+
+    # 4:00 PM EOD slot
+    if hour == 16 and abs(minute - 0) <= TOLERANCE_MIN:
+        return True
+
+    # Har-15-min "2 min pehle" wala grid (approx 8 AM se 3:30 PM tak)
+    if 8 <= hour <= 15:
+        for target_min in (13, 28, 43, 58):
+            if abs(minute - target_min) <= TOLERANCE_MIN:
+                return True
+
+    return False
+
+
 RSI_CROSS_INTRADAY_TFS = ["30m", "45m", "1H", "2H", "75m", "90m", "150m", "3H", "4H"]
 RSI_CROSS_HIGHER_TFS = ["1D", "2D", "3D", "1W", "1M"]
 RSI_CROSS_TIMEFRAMES = RSI_CROSS_INTRADAY_TFS + RSI_CROSS_HIGHER_TFS
@@ -1728,8 +1754,16 @@ def main() -> None:
         #   2) Jab bhi AAP khud "Run workflow" se manually/forcefully
         #      trigger karo -- automatic (scheduled) runs mein market
         #      hours ke andar yeh baar-baar nahi chalega.
+        # Agar abhi ka waqt hamare NORMAL automated-schedule slots
+        # (9:15, har 15-min grid, 4 PM) mein se kisi ke paas hai, to
+        # normal rules follow karo (higher-TF sirf 4 PM+). Lekin agar
+        # koi "unusual" waqt pe manually chala raha hai (jo schedule
+        # mein hai hi nahi), to woh clearly ek deliberate force-check
+        # hai -- us case mein higher-TF bhi chala do, chahe hour kuch
+        # bhi ho.
         is_manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
-        is_eod_window = now.hour >= 16 or is_manual_run
+        is_unusual_manual_run = is_manual_run and not is_known_schedule_time(now)
+        is_eod_window = now.hour >= 16 or is_unusual_manual_run
 
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
