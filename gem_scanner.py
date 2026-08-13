@@ -228,17 +228,13 @@ def is_known_schedule_time(now: pd.Timestamp) -> bool:
     hour = now.hour
     minute = now.minute
 
-    # 9:15 AM market-open slot
-    if hour == 9 and abs(minute - 15) <= TOLERANCE_MIN:
+    # 3:40 PM -- din ka aakhri, unified (intraday + higher-TF) run
+    if hour == 15 and abs(minute - 40) <= TOLERANCE_MIN:
         return True
 
-    # 4:00 PM EOD slot
-    if hour == 16 and abs(minute - 0) <= TOLERANCE_MIN:
-        return True
-
-    # Har-15-min "2 min pehle" wala grid (approx 8 AM se 3:30 PM tak)
-    if 8 <= hour <= 15:
-        for target_min in (13, 28, 43, 58):
+    # 9:30 AM se 3:30 PM tak, exactly har 15 min (0,15,30,45)
+    if 9 <= hour <= 15:
+        for target_min in (0, 15, 30, 45):
             if abs(minute - target_min) <= TOLERANCE_MIN:
                 return True
 
@@ -1763,7 +1759,11 @@ def main() -> None:
         # bhi ho.
         is_manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
         is_unusual_manual_run = is_manual_run and not is_known_schedule_time(now)
-        is_eod_window = now.hour >= 16 or is_unusual_manual_run
+        # Din ka aakhri, unified run 3:40 PM par hota hai -- yahi
+        # higher-TF/EOD scan ka asli trigger hai (4 PM wala alag slot
+        # ab nahi hai).
+        is_scheduled_eod_time = now.hour == 15 and now.minute >= 35
+        is_eod_window = is_scheduled_eod_time or is_unusual_manual_run
 
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
