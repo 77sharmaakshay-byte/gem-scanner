@@ -3,15 +3,12 @@ name: Gem Setup Scanner
 on:
   schedule:
     # IST = UTC + 5:30.
-    # 9:15 AM = market open baseline run.
-    - cron: '45 3 * * 1-5'
-    # Har 15-min candle boundary se ~2 min PEHLE chalta hai (9:13, 9:28,
-    # 9:43, 9:58, ... 15:13, 15:28 IST) -- taaki candle close hone se
-    # pehle hi "LIVE" setup dikh jaaye, next candle ka wait na karna pade.
-    - cron: '13,28,43,58 3-9 * * 1-5'
-    # 4:00 PM IST -- din mein sirf EK baar, market band hone ke baad
-    # (3:30 PM close) -- higher-TF (2D/3D/1W/1M/6M) scans yahi chalte hain.
-    - cron: '30 10 * * 1-5'
+    # 9:30 AM se 3:30 PM tak, exactly har 15 min (clean, predictable times).
+    - cron: '0,15,30,45 4-9 * * 1-5'
+    - cron: '0 10 * * 1-5'
+    # 3:40 PM -- din ka aakhri, UNIFIED run (intraday ka aakhri catch-up
+    # + higher-TF/EOD scan dono ek hi jagah).
+    - cron: '10 10 * * 1-5'
   workflow_dispatch:   # lets you trigger it manually from the Actions tab to test
 
 jobs:
