@@ -1062,6 +1062,19 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     new_buy_setup = (ha_above_bb & squeeze_recent_3).fillna(False)
     new_sell_setup = (ha_below_bb & squeeze_recent_3).fillna(False)
 
+    # Gem_Setup_Intraday ka naya visibility filter -- 4 conditions,
+    # koi bhi ek match ho to visible:
+    #  1) SQ% >= 90
+    #  2) RSI-BB width (upper-lower gap) < 18 points
+    #  3) New_HA_Squeeze_Setup wala trigger (HA band ke bahar + recent squeeze)
+    #  4) Price aur RSI dono simultaneously squeeze (Both Squeeze)
+    gem_intraday_composite = (
+        display_contraction.ge(90)
+        | rsi_width.lt(18)
+        | (new_buy_setup | new_sell_setup)
+        | both_squeeze_ready
+    ).fillna(False)
+
     buy_entry_seed = ha_above_bb & strong_bull & rsi_cross_upper
     sell_entry_seed = ha_below_bb & strong_bear & rsi_cross_lower
     entry_signal, entry_price, bars_since_entry = _entry_state(
@@ -1270,6 +1283,7 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["sell_breakout"] = sell_breakout.astype(int)
     out["new_buy_setup"] = new_buy_setup.astype(int)
     out["new_sell_setup"] = new_sell_setup.astype(int)
+    out["gem_intraday_composite"] = gem_intraday_composite.astype(int)
     out["ha_buy_setup"] = ha_buy_setup.astype(int)
     out["ha_sell_setup"] = ha_sell_setup.astype(int)
     out["entry_signal"] = entry_signal
@@ -1568,10 +1582,11 @@ def run_scanner(
                     rsi_ready = bool(last.get("rsi_squeeze_ready", 0))
                     both_ready = price_ready and rsi_ready
 
-                    if common.get("Is Gem Setup", 0):
-                        if common.get("TF Group") == "INTRADAY":
+                    if common.get("TF Group") == "INTRADAY":
+                        if bool(last.get("gem_intraday_composite", 0)):
                             gem_intraday_rows.append(common)
-                        else:
+                    else:
+                        if common.get("Is Gem Setup", 0):
                             gem_higher_rows.append(common)
 
                     if price_ready and not rsi_ready:
@@ -1617,7 +1632,7 @@ def run_scanner(
         print("All scanner downloads OK.")
 
     outputs = {
-        "Gem_Setup_Intraday": pd.DataFrame(visible_squeeze_rows(gem_intraday_rows)),
+        "Gem_Setup_Intraday": pd.DataFrame(gem_intraday_rows),
         "Gem_Setup_HigherTF": pd.DataFrame(visible_squeeze_rows(gem_higher_rows)),
         "Price_BB_Squeeze": pd.DataFrame(visible_squeeze_rows(price_rows)),
         "RSI_BB_Squeeze": pd.DataFrame(visible_squeeze_rows(rsi_rows)),
