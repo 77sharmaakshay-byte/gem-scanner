@@ -259,6 +259,20 @@ def _fmt_num(value) -> str:
         return str(value)
 
 
+def _sqz_ago_text(value) -> str:
+    """RSI-BB cross rows par: squeeze kitni candles pehle tha.
+    Baaki sections mein ye column hota hi nahi, to khali string."""
+    try:
+        if value is None or value == "" or pd.isna(value):
+            return ""
+        bars = int(value)
+    except Exception:
+        return ""
+    if bars <= 0:
+        return "SQZ abhi"
+    return f"SQZ {bars} candle pehle" if bars == 1 else f"SQZ {bars} candles pehle"
+
+
 def notify_discord(outputs: dict) -> None:
     """Is run mein jitni bhi sheets mein naya data mila, sabka ek combined
     alert #general (ya default webhook) pe bhejta hai -- squeeze% details ke saath.
@@ -285,6 +299,9 @@ def notify_discord(outputs: dict) -> None:
             extras.append(f"SQ% {sq}")
         if rsi_bb:
             extras.append(f"RSI-BB% {rsi_bb}")
+        sqz_ago = _sqz_ago_text(r.get("Sqz Bars Ago"))
+        if sqz_ago:
+            extras.append(sqz_ago)
         if extras:
             piece += " (" + ", ".join(extras) + ")"
         return piece
