@@ -65,6 +65,23 @@ RSI_BB_MULT = 2.0
 RSI_MIN_CONTRACTION = 55.0
 RSI_BB_PERSIST_BARS = 2
 
+# RSI-BB cross setup ko squeeze se baandhne ke liye.
+# Cross tabhi valid jab us candle par RSI squeeze chal raha ho, ya squeeze
+# khatam hue atmost RSI_CROSS_SQUEEZE_MAX_BARS candles hui hon.
+RSI_CROSS_REQUIRE_SQUEEZE = True
+RSI_CROSS_SQUEEZE_MAX_BARS = 4
+RSI_CROSS_SQUEEZE_INTRADAY_ONLY = True
+
+# "RSI squeeze" ka matlab kya ho:
+#   "ready"  = RSI ki BB Keltner ke andar HO, YA RSI-BB contraction
+#              >= RSI_MIN_CONTRACTION (55). Scanner baaki har jagah
+#              (rsi_squeeze_ready) isi ko RSI squeeze maanta hai.
+#   "strict" = sirf BB poori tarah Keltner ke andar. Real NSE intraday data
+#              par ye sirf ~0.03% bars par sach hota hai, yaani filter
+#              lagbhag saare cross alerts kaat dega. Sirf tab chuno jab
+#              channel ko jaan-boojh kar bilkul chhota karna ho.
+RSI_CROSS_SQUEEZE_MODE = "ready"
+
 PRICE_BB_LENGTH = 20
 PRICE_BB_MULT = 2.0
 PRICE_BB_LOOKBACK = 30
@@ -244,6 +261,16 @@ def is_known_schedule_time(now: pd.Timestamp) -> bool:
 RSI_CROSS_INTRADAY_TFS = ["30m", "45m", "1H", "2H", "75m", "90m", "150m", "3H", "4H"]
 RSI_CROSS_HIGHER_TFS = ["1D", "2D", "3D", "1W", "1M"]
 RSI_CROSS_TIMEFRAMES = RSI_CROSS_INTRADAY_TFS + RSI_CROSS_HIGHER_TFS
+
+
+def rsi_cross_requires_squeeze(tf: str) -> bool:
+    """Is timeframe par RSI-BB cross ke liye squeeze zaroori hai ya nahi.
+    Default: sirf intraday TFs par zaroori, higher TFs pehle jaise cross-only."""
+    if not RSI_CROSS_REQUIRE_SQUEEZE:
+        return False
+    if RSI_CROSS_SQUEEZE_INTRADAY_ONLY:
+        return tf in RSI_CROSS_INTRADAY_TFS
+    return True
 
 
 def rsi_cross_due_now() -> List[str]:
@@ -932,6 +959,18 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     ).fillna(False)
     rsi_bb_cross_buy = (rsi.gt(rsi_upper) & rsi_prev_inside_bb).fillna(False)
     rsi_bb_cross_sell = (rsi.lt(rsi_lower) & rsi_prev_inside_bb).fillna(False)
+
+    # Squeeze window: is candle par squeeze chal raha ho, ya pichhli
+    # RSI_CROSS_SQUEEZE_MAX_BARS candles mein kabhi chala ho.
+    rsi_squeeze_base = (
+        rsi_squeeze_now
+        if RSI_CROSS_SQUEEZE_MODE == "strict"
+        else (rsi_squeeze_now | rsi_tight)
+    ).fillna(False)
+    rsi_squeeze_bars_ago = _bars_since_true(rsi_squeeze_base)
+    rsi_cross_squeeze_ok = _recent_true(rsi_squeeze_base, RSI_CROSS_SQUEEZE_MAX_BARS)
+    rsi_bb_cross_buy_sqz = (rsi_bb_cross_buy & rsi_cross_squeeze_ok).fillna(False)
+    rsi_bb_cross_sell_sqz = (rsi_bb_cross_sell & rsi_cross_squeeze_ok).fillna(False)
     recent_cross_upper = _bars_since_true(rsi_cross_upper).le(RSI_BB_PERSIST_BARS)
     recent_cross_lower = _bars_since_true(rsi_cross_lower).le(RSI_BB_PERSIST_BARS)
     rsi_above_upper = rsi.gt(rsi_upper).fillna(False)
@@ -1242,6 +1281,10 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["rsi_cross_lower"] = rsi_cross_lower.astype(int)
     out["rsi_bb_cross_buy"] = rsi_bb_cross_buy.astype(int)
     out["rsi_bb_cross_sell"] = rsi_bb_cross_sell.astype(int)
+    out["rsi_squeeze_bars_ago"] = rsi_squeeze_bars_ago
+    out["rsi_cross_squeeze_ok"] = rsi_cross_squeeze_ok.astype(int)
+    out["rsi_bb_cross_buy_sqz"] = rsi_bb_cross_buy_sqz.astype(int)
+    out["rsi_bb_cross_sell_sqz"] = rsi_bb_cross_sell_sqz.astype(int)
     out["rsi_explosive"] = rsi_explosive
 
     out["price_bb_basis"] = price_basis
@@ -1654,7 +1697,11 @@ def run_scanner(
 
 def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
     """RSI-BB Cross setup -- current RSI band se bahar nikla (upar ya neeche),
-    aur pichli candle ka RSI band ke andar (upper aur lower ke beech) tha."""
+    aur pichli candle ka RSI band ke andar (upper aur lower ke beech) tha.
+
+    Intraday TFs par cross tabhi ginta hai jab RSI squeeze usi candle par
+    chal raha ho, ya squeeze ko atmost RSI_CROSS_SQUEEZE_MAX_BARS candles
+    hui hon. Higher TFs par filter nahi lagta (cross-only, pehle jaisa)."""
     groups = timeframe_groups(RSI_CROSS_TIMEFRAMES)
     rows: List[Dict[str, Any]] = []
 
@@ -1676,10 +1723,25 @@ def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFram
                         continue
 
                     last = sig.iloc[-1]
-                    if bool(last.get("rsi_bb_cross_buy", 0)) or bool(last.get("rsi_bb_cross_sell", 0)):
-                        side = "BUY" if bool(last.get("rsi_bb_cross_buy", 0)) else "SELL"
-                        common = row_common(nse, tf, sig, last)
-                        rows.append({**common, "Side": side, "Status": bar_status(sig, tf)})
+                    is_buy = bool(last.get("rsi_bb_cross_buy", 0))
+                    is_sell = bool(last.get("rsi_bb_cross_sell", 0))
+                    if not (is_buy or is_sell):
+                        continue
+
+                    bars_ago = int(last.get("rsi_squeeze_bars_ago", 999))
+                    in_window = bool(last.get("rsi_cross_squeeze_ok", 0))
+                    if rsi_cross_requires_squeeze(tf) and not in_window:
+                        continue
+
+                    side = "BUY" if is_buy else "SELL"
+                    common = row_common(nse, tf, sig, last)
+                    rows.append({
+                        **common,
+                        "Side": side,
+                        "Sqz Bars Ago": bars_ago if bars_ago < 999 else "",
+                        "Sqz Filter": "YES" if rsi_cross_requires_squeeze(tf) else "NO",
+                        "Status": bar_status(sig, tf),
+                    })
                 except Exception as e:
                     print(f"RSI-BB cross scan skip {nse} {tf}: {e}")
 
@@ -1788,6 +1850,13 @@ def main() -> None:
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
         print(f"RSI-BB cross due this run: {', '.join(rsi_cross_due_tfs) if rsi_cross_due_tfs else 'NONE'}")
+        if RSI_CROSS_REQUIRE_SQUEEZE:
+            scope = "intraday TFs" if RSI_CROSS_SQUEEZE_INTRADAY_ONLY else "sabhi TFs"
+            print(
+                f"RSI-BB cross squeeze filter: ON ({scope}) -- "
+                f"cross squeeze par ya uske {RSI_CROSS_SQUEEZE_MAX_BARS} candles ke andar hona chahiye "
+                f"[mode: {RSI_CROSS_SQUEEZE_MODE}]"
+            )
 
         if not due_tfs and not mid_bb_due_tfs and not rsi_cross_due_tfs:
             print("Koi timeframe abhi due nahi, is run mein kuch nahi karna.")
