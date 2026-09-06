@@ -274,6 +274,17 @@ def timeframes_due_now() -> List[str]:
     return due
 
 
+# Session ke aakhir mein ban-ne wali adhoori candle.
+# NSE session 375 min ka hai, jo 90m/2H/3H jaise TFs ka poora multiple nahi hai,
+# to har din aakhir mein ek chhota tukda bachta hai -- 90m par sirf 15:15-15:30
+# ke 15 minute. Usko poori 90m candle maan lene se RSI jhatka kha jaata hai
+# aur bilkul jhoothe cross bante hain (BPCL 4 Sep: 90m RSI 47.94 ki jagah 41.81
+# aa gaya aur band ke neeche fake SELL cross ban gaya).
+# Isliye wo bar hata dete hain jisme TF ki poori duration ka MIN_BAR_FILL se
+# kam data ho. 0.5 par 45m/1H/90m/2H/3H ke tukde hatte hain, aur 30m/150m/4H
+# ke aakhri bar (jo aadhe se zyada bhare hote hain) bache rehte hain.
+MIN_BAR_FILL = 0.5
+
 SCAN_INTERVAL_MINUTES = 15
 MARKET_CLOSE_OFFSET_MINUTES = 15 * 60 + 15  # 3:15 PM
 
@@ -838,17 +849,32 @@ def _resample_ohlcv(df: pd.DataFrame, rule: Optional[str]) -> pd.DataFrame:
 
     offset = _intraday_offset(rule)
     if offset:
-        resampled = work.resample(
+        sampler = work.resample(
             rule,
             origin="start_day",
             offset=offset,
             label="right",
             closed="left",
-        ).agg(agg)
+        )
+        resampled = sampler.agg(agg)
+        counts = sampler.size()
     else:
-        resampled = work.resample(rule).agg(agg)
+        sampler = work.resample(rule)
+        resampled = sampler.agg(agg)
+        counts = sampler.size()
 
-    return resampled.dropna(subset=["Close"])
+    resampled = resampled.dropna(subset=["Close"])
+    counts = counts.reindex(resampled.index).fillna(0)
+
+    # Poori candle mein kitne base bars hone chahiye -- sabse aam count hi
+    # "poora" maana jayega (beech ke saare din poore hote hain).
+    non_empty = counts[counts > 0]
+    if len(non_empty):
+        full = float(non_empty.mode().iloc[0]) if len(non_empty.mode()) else float(non_empty.max())
+        if full > 0:
+            resampled = resampled[counts >= full * MIN_BAR_FILL]
+
+    return resampled
 
 
 def timeframe_groups(timeframes: Iterable[str]) -> Dict[Tuple[str, str], List[str]]:
