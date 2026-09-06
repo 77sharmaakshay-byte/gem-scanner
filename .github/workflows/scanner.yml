@@ -3,11 +3,15 @@ name: Gem Setup Scanner
 on:
   schedule:
     # IST = UTC + 5:30.
+    # 9:15 AM -- market open, din ka pehla scan. Is waqt elapsed = 0 hota hai,
+    # to saare intraday TFs due nikalte hain (pichhle session ki closed candles par).
+    - cron: '45 3 * * 1-5'
     # 9:30 AM se 3:30 PM tak, exactly har 15 min (clean, predictable times).
+    # Har TF apne boundary par: 30m -> 9:45, 45m -> 10:00, 1H -> 10:15, waghairah.
     - cron: '0,15,30,45 4-9 * * 1-5'
     - cron: '0 10 * * 1-5'
-    # 3:40 PM -- din ka aakhri, UNIFIED run (intraday ka aakhri catch-up
-    # + higher-TF/EOD scan dono ek hi jagah).
+    # 3:40 PM -- din ka aakhri, UNIFIED run. Yahan SAARE timeframes force
+    # hote hain (9 intraday + 5 higher), chahe boundary pade ya na pade.
     - cron: '10 10 * * 1-5'
   workflow_dispatch:   # lets you trigger it manually from the Actions tab to test
 
