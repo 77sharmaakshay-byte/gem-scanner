@@ -65,22 +65,82 @@ RSI_BB_MULT = 2.0
 RSI_MIN_CONTRACTION = 55.0
 RSI_BB_PERSIST_BARS = 2
 
+# Pine indicator ka ma_rsi = sma(rsi, 6) -- chart par yahi white line plot
+# hoti hai. RSI-BB cross isi line par gina jayega, taaki alert aur chart
+# ek hi cheez dekhein. "rsi" karne par raw RSI par cross ginega (purana
+# vyavhaar), jo chart par dikhta hi nahi kyunki wo plot nahi hoti.
+RSI_MA_LENGTH = 6
+RSI_CROSS_LINE = "rsi"
+
 # RSI-BB cross setup ko squeeze se baandhne ke liye.
 # Cross tabhi valid jab us candle par RSI squeeze chal raha ho, ya squeeze
 # khatam hue atmost RSI_CROSS_SQUEEZE_MAX_BARS candles hui hon.
 RSI_CROSS_REQUIRE_SQUEEZE = True
 RSI_CROSS_SQUEEZE_MAX_BARS = 4
-RSI_CROSS_SQUEEZE_INTRADAY_ONLY = True
+RSI_CROSS_SQUEEZE_INTRADAY_ONLY = False
 
 # "RSI squeeze" ka matlab kya ho:
+#   "width"  = RSI band ki ASLI width (upper - lower) <= threshold.
+#              Yahi chart par dikhne wali squeeze hai. Default.
 #   "ready"  = RSI ki BB Keltner ke andar HO, YA RSI-BB contraction
-#              >= RSI_MIN_CONTRACTION (55). Scanner baaki har jagah
-#              (rsi_squeeze_ready) isi ko RSI squeeze maanta hai.
-#   "strict" = sirf BB poori tarah Keltner ke andar. Real NSE intraday data
-#              par ye sirf ~0.03% bars par sach hota hai, yaani filter
-#              lagbhag saare cross alerts kaat dega. Sirf tab chuno jab
-#              channel ko jaan-boojh kar bilkul chhota karna ho.
-RSI_CROSS_SQUEEZE_MODE = "ready"
+#              >= RSI_MIN_CONTRACTION (55). PROBLEM: ye relative paimana
+#              hai (width vs pichhli 30 candles ki sabse BADI width), to
+#              ek volatility spike ke baad normal chaudi band bhi 30
+#              candles tak "squeeze" ban jaati hai -- jhoote alerts.
+#   "strict" = BB poori tarah Keltner ke andar. Real data par sirf ~0.03%
+#              bars, yaani channel lagbhag band.
+RSI_CROSS_SQUEEZE_MODE = "localmin"
+
+# "width" mode ka threshold: RSI band ki width (upper - lower) isse
+# kam ya barabar ho tabhi squeeze maana jayega.
+# Reference: 10 stocks x 60 din par RSI band width ka median ~32 hai,
+# aur <=13 sirf ~0.7% bars par hota hai -- yaani asli tight band.
+RSI_CROSS_SQUEEZE_MAX_WIDTH = 13.0
+
+# "percentile" mode: width apni pichhli RSI_CROSS_SQUEEZE_PCT_LOOKBACK candles
+# ki sabse choti RSI_CROSS_SQUEEZE_PCT% widths mein ho tabhi squeeze.
+# Ye har stock ke hisaab se khud adjust hota hai -- BPCL ki bands ~15 par
+# tight hoti hain, CROMPTON ki ~23 par, aur ek fixed number dono par theek
+# nahi baithta. Miss kam karne ke liye yahi default hai.
+RSI_CROSS_SQUEEZE_PCT = 25.0
+RSI_CROSS_SQUEEZE_PCT_LOOKBACK = 100
+
+# "localmin" mode (default): squeeze tab jab RSI band ki width apni pichhli
+# RSI_CROSS_SQUEEZE_LOCALMIN_BARS candles ki sabse choti width ke
+# RSI_CROSS_SQUEEZE_LOCALMIN_TOL guna ke andar ho -- yaani band tight hokar
+# apne local low par aa gayi ho. Chart par squeeze ek SHAPE hai (tight hokar
+# phailna), level nahi; isiliye ye percentile se behtar kaam karta hai.
+# Nifty 50 (49 stocks, 60 din, 1H/2H/3H/4H) par naapa gaya:
+#   percentile<=25 -> 79/81/70/66% asli squeeze-cross pakde, 1239 alerts
+#   localmin +20%  -> 92/92/89/93% pakde, 1441 alerts
+# Zyada pakadna ho to TOL badha do (+30% -> 94/94/90/93%), kam chahiye to ghata do.
+RSI_CROSS_SQUEEZE_LOCALMIN_BARS = 20
+# 1.10 = tight. Akshay ka faisla: kam par behtar setups.
+# 223 F&O stocks, 730 din, breakout entry par naapa gaya avg return:
+#   TF   | filter nahi | 1.75x | 1.20x | 1.10x
+#   1H   |   0.089%    | 0.095 | 0.098 | 0.100
+#   2H   |   0.087%    | 0.095 | 0.098 | 0.107
+#   4H   |   0.036%    | 0.031 | 0.026 | 0.053
+#   1D   |   0.066%    | 0.078 | 0.114 | 0.117
+#   2D   |   0.331%    | 0.316 | 0.319 | 0.316   <- yahan tight karna ULTA padta hai
+# Keemat: Akshay ke bheje 9 marked setups (1.13x se 1.68x) is par NAHI aayenge.
+# Unhe wapas chahiye to 1.75 kar do; beech ka raasta 1.45 (7/9).
+RSI_CROSS_SQUEEZE_LOCALMIN_TOL = 1.10
+
+# "width" mode ke liye -- kisi TF par alag threshold chahiye to yahan daalo.
+RSI_CROSS_SQUEEZE_MAX_WIDTH_BY_TF: Dict[str, float] = {
+    "1H": 13.0,
+    "2H": 20.0,
+    "3H": 18.0,
+    "4H": 18.0,
+}
+
+
+def rsi_cross_max_width(tf: Optional[str] = None) -> float:
+    """Is timeframe par squeeze ke liye maximum RSI band width."""
+    if tf is None:
+        return RSI_CROSS_SQUEEZE_MAX_WIDTH
+    return RSI_CROSS_SQUEEZE_MAX_WIDTH_BY_TF.get(tf, RSI_CROSS_SQUEEZE_MAX_WIDTH)
 
 PRICE_BB_LENGTH = 20
 PRICE_BB_MULT = 2.0
@@ -838,7 +898,7 @@ def passes_freshness(df: pd.DataFrame, tf: str) -> Tuple[bool, bool]:
     return True, stale_warn
 
 
-def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
+def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFrame:
     df = _flatten(df).copy()
     required = ["Open", "High", "Low", "Close"]
     missing = [c for c in required if c not in df.columns]
@@ -954,19 +1014,37 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     rsi_cross_upper = _cross_over(rsi, rsi_upper)
     rsi_cross_lower = _cross_under(rsi, rsi_lower)
 
+    # Cross kis line ka -- chart wali ma_rsi, ya raw rsi.
+    # Bands dono soorat mein raw rsi par hi bani rehti hain (Pine: src = rsi).
+    rsi_ma = rsi.rolling(RSI_MA_LENGTH).mean()
+    cross_line = rsi_ma if RSI_CROSS_LINE == "ma_rsi" else rsi
     rsi_prev_inside_bb = (
-        rsi.shift(1).le(rsi_upper.shift(1)) & rsi.shift(1).ge(rsi_lower.shift(1))
+        cross_line.shift(1).le(rsi_upper.shift(1))
+        & cross_line.shift(1).ge(rsi_lower.shift(1))
     ).fillna(False)
-    rsi_bb_cross_buy = (rsi.gt(rsi_upper) & rsi_prev_inside_bb).fillna(False)
-    rsi_bb_cross_sell = (rsi.lt(rsi_lower) & rsi_prev_inside_bb).fillna(False)
+    rsi_bb_cross_buy = (cross_line.gt(rsi_upper) & rsi_prev_inside_bb).fillna(False)
+    rsi_bb_cross_sell = (cross_line.lt(rsi_lower) & rsi_prev_inside_bb).fillna(False)
 
     # Squeeze window: is candle par squeeze chal raha ho, ya pichhli
     # RSI_CROSS_SQUEEZE_MAX_BARS candles mein kabhi chala ho.
-    rsi_squeeze_base = (
-        rsi_squeeze_now
-        if RSI_CROSS_SQUEEZE_MODE == "strict"
-        else (rsi_squeeze_now | rsi_tight)
-    ).fillna(False)
+    if RSI_CROSS_SQUEEZE_MODE == "localmin":
+        local_low = rsi_width.rolling(
+            RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10
+        ).min()
+        rsi_squeeze_base = rsi_width.le(local_low * RSI_CROSS_SQUEEZE_LOCALMIN_TOL)
+    elif RSI_CROSS_SQUEEZE_MODE == "percentile":
+        # rolling quantile -- vectorised, .apply() se bahut tez
+        pct_level = rsi_width.rolling(
+            RSI_CROSS_SQUEEZE_PCT_LOOKBACK, min_periods=30
+        ).quantile(RSI_CROSS_SQUEEZE_PCT / 100.0)
+        rsi_squeeze_base = rsi_width.le(pct_level)
+    elif RSI_CROSS_SQUEEZE_MODE == "width":
+        rsi_squeeze_base = rsi_width.le(rsi_cross_max_width(tf))
+    elif RSI_CROSS_SQUEEZE_MODE == "strict":
+        rsi_squeeze_base = rsi_squeeze_now
+    else:
+        rsi_squeeze_base = rsi_squeeze_now | rsi_tight
+    rsi_squeeze_base = rsi_squeeze_base.fillna(False)
     rsi_squeeze_bars_ago = _bars_since_true(rsi_squeeze_base)
     rsi_cross_squeeze_ok = _recent_true(rsi_squeeze_base, RSI_CROSS_SQUEEZE_MAX_BARS)
     rsi_bb_cross_buy_sqz = (rsi_bb_cross_buy & rsi_cross_squeeze_ok).fillna(False)
@@ -1279,6 +1357,7 @@ def compute_scan_frame(df: pd.DataFrame) -> pd.DataFrame:
     out["rsi_tight"] = rsi_tight.astype(int)
     out["rsi_cross_upper"] = rsi_cross_upper.astype(int)
     out["rsi_cross_lower"] = rsi_cross_lower.astype(int)
+    out["rsi_ma"] = rsi_ma
     out["rsi_bb_cross_buy"] = rsi_bb_cross_buy.astype(int)
     out["rsi_bb_cross_sell"] = rsi_bb_cross_sell.astype(int)
     out["rsi_squeeze_bars_ago"] = rsi_squeeze_bars_ago
@@ -1718,7 +1797,7 @@ def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFram
                     if len(df) < MIN_BARS_SCAN:
                         continue
 
-                    sig = compute_scan_frame(df)
+                    sig = compute_scan_frame(df, tf)
                     if sig.empty:
                         continue
 
@@ -1855,7 +1934,8 @@ def main() -> None:
             print(
                 f"RSI-BB cross squeeze filter: ON ({scope}) -- "
                 f"cross squeeze par ya uske {RSI_CROSS_SQUEEZE_MAX_BARS} candles ke andar hona chahiye "
-                f"[mode: {RSI_CROSS_SQUEEZE_MODE}]"
+                f"[mode: {RSI_CROSS_SQUEEZE_MODE}, localmin: {RSI_CROSS_SQUEEZE_LOCALMIN_BARS} bars "f"+{(RSI_CROSS_SQUEEZE_LOCALMIN_TOL-1)*100:.0f}%, "
+                f"cross line: {RSI_CROSS_LINE}]"
             )
 
         if not due_tfs and not mid_bb_due_tfs and not rsi_cross_due_tfs:
