@@ -1924,7 +1924,12 @@ def main() -> None:
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
         if is_eod_window:
-            rsi_cross_due_tfs = list(dict.fromkeys(rsi_cross_due_tfs + RSI_CROSS_HIGHER_TFS))
+            # Din ka aakhri run (3:40 PM) -- SAB kuch scan hota hai, intraday
+            # aur higher dono, chahe us waqt kisi TF ka boundary na pada ho.
+            # Warna 3:40 par elapsed 385 min hota hai aur 30m/45m/1H jaise TFs
+            # due hi nahi nikalte, yaani din ka aakhri look unpe milta hi nahi.
+            due_tfs = list(dict.fromkeys(INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES))
+            rsi_cross_due_tfs = list(RSI_CROSS_TIMEFRAMES)
 
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
