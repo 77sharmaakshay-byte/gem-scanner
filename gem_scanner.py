@@ -247,6 +247,14 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 
 
+def is_eod_now() -> bool:
+    """Din ka aakhri run -- 3:35 PM ke baad. Higher timeframes SIRF yahan
+    scan hote hain, warna 3:00/3:15/3:30/3:40 par chaar baar scan hote the
+    aur wahi alerts chaar baar Discord par jaate the."""
+    now = _local_now_naive()
+    return now.hour == 15 and now.minute >= 35
+
+
 def timeframes_due_now() -> List[str]:
     """Sirf woh timeframes return karta hai jinka bar (roughly) abhi close hua hoga.
     Cron/runner delay ko handle karne ke liye 2-min tolerance rakha hai."""
@@ -268,7 +276,7 @@ def timeframes_due_now() -> List[str]:
         if close_to_boundary:
             due.append(tf)
 
-    if now.hour >= 15:
+    if is_eod_now():
         due += HIGHER_TIMEFRAMES
 
     return due
@@ -364,7 +372,7 @@ def rsi_cross_due_now() -> List[str]:
         if close_to_boundary:
             due.append(tf)
 
-    if now.hour >= 15:
+    if is_eod_now():
         due += RSI_CROSS_HIGHER_TFS
 
     return due
@@ -870,7 +878,12 @@ def _resample_ohlcv(df: pd.DataFrame, rule: Optional[str]) -> pd.DataFrame:
     # "poora" maana jayega (beech ke saare din poore hote hain).
     non_empty = counts[counts > 0]
     if len(non_empty):
-        full = float(non_empty.mode().iloc[0]) if len(non_empty.mode()) else float(non_empty.max())
+        # 95th percentile, mode nahi. 4H par har din do bucket bante hain
+        # (9:15-13:15 = 16 base bars, 13:15-17:15 = 9), to mode tie ho jaata
+        # hai aur chhota wala chun liya jaata tha -- usse threshold aadha ho
+        # jaata aur abhi ban rahi candle bhi pass kar jaati. Percentile
+        # poori candle ka size pakadta hai aur kisi ajeeb din se bhi nahi bigadta.
+        full = float(non_empty.quantile(0.95))
         if full > 0:
             resampled = resampled[counts >= full * MIN_BAR_FILL]
 
