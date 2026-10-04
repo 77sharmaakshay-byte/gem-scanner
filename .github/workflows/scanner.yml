@@ -2,17 +2,21 @@ name: Gem Setup Scanner
 
 on:
   schedule:
-    # IST = UTC + 5:30.
-    # 9:15 AM -- market open, din ka pehla scan. Is waqt elapsed = 0 hota hai,
-    # to saare intraday TFs due nikalte hain (pichhle session ki closed candles par).
+    # IST = UTC + 5:30.  Market: 9:15 AM - 3:30 PM.
+    # 9:15 AM -- din ka pehla scan (saare intraday TFs due nikalte hain).
     - cron: '45 3 * * 1-5'
-    # 9:30 AM se 3:30 PM tak, exactly har 15 min (clean, predictable times).
-    # Har TF apne boundary par: 30m -> 9:45, 45m -> 10:00, 1H -> 10:15, waghairah.
+    # 9:30 AM se 3:15 PM tak har 15 min. Har TF apne boundary par:
+    # 30m -> 9:45, 45m -> 10:00, 1H -> 10:15, waghairah.
     - cron: '0,15,30,45 4-9 * * 1-5'
+    # 3:30 PM -- market close.
     - cron: '0 10 * * 1-5'
-    # 3:40 PM -- din ka aakhri, UNIFIED run. Yahan SAARE timeframes force
-    # hote hain (9 intraday + 5 higher), chahe boundary pade ya na pade.
-    - cron: '10 10 * * 1-5'
+    # 3:35 PM -- din ka aakhri, unified run. SIRF yahan higher timeframes
+    # (1D/2D/3D/1W/1M) scan hote hain, aur saare intraday TFs force hote hain.
+    - cron: '5 10 * * 1-5'
+    #
+    # Code mein bhi hard guard hai: 9:15 AM se pehle ya 4:00 PM ke baad
+    # scanner turant exit ho jaata hai. Zaroori isliye ki GitHub ka cron
+    # ghanton late fire hota hai -- is repo ke runs 23:38 IST tak chale hain.
   workflow_dispatch:   # lets you trigger it manually from the Actions tab to test
 
 jobs:
