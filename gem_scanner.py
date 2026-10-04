@@ -247,12 +247,32 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
 SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 
 
-def is_eod_now() -> bool:
-    """Din ka aakhri run -- 3:35 PM ke baad. Higher timeframes SIRF yahan
-    scan hote hain, warna 3:00/3:15/3:30/3:40 par chaar baar scan hote the
-    aur wahi alerts chaar baar Discord par jaate the."""
+# Scanner sirf is window ke andar kaam karta hai (IST). Iske bahar turant
+# exit -- kuch scan nahi, koi Discord alert nahi.
+# Zaroori kyun: GitHub Actions ka cron ghanton late fire hota hai. Is repo ke
+# runs 19:38, 20:42, 21:45, 22:30 aur 23:38 IST tak par chale hain. 21:45 par
+# market open se 750 minute hote hain, jo 30/75/150 se poora kat-ta hai --
+# yaani delayed run ko 30m/75m/150m "due" lagte the aur wo raat ko purani
+# candles par alert bhej deta tha.
+SCAN_WINDOW_START_MINUTES = 9 * 60 + 15    # 9:15 AM
+SCAN_WINDOW_END_MINUTES = 16 * 60          # 4:00 PM -- iske baad kuch nahi
+EOD_START_MINUTES = 15 * 60 + 35           # 3:35 PM -- higher TFs sirf yahan
+
+
+def _minutes_now() -> int:
     now = _local_now_naive()
-    return now.hour == 15 and now.minute >= 35
+    return now.hour * 60 + now.minute
+
+
+def in_scan_window() -> bool:
+    """9:15 AM se 4:00 PM IST ke beech hai ya nahi."""
+    return SCAN_WINDOW_START_MINUTES <= _minutes_now() < SCAN_WINDOW_END_MINUTES
+
+
+def is_eod_now() -> bool:
+    """Din ka aakhri run -- 3:35 PM se 4:00 PM ke beech. Higher timeframes
+    SIRF yahan scan hote hain, din mein ek hi baar."""
+    return EOD_START_MINUTES <= _minutes_now() < SCAN_WINDOW_END_MINUTES
 
 
 def timeframes_due_now() -> List[str]:
@@ -313,28 +333,6 @@ def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
     if nxt > market_close:
         return None
     return nxt
-
-
-def is_known_schedule_time(now: pd.Timestamp) -> bool:
-    """Check karta hai ki 'now' hamare defined GitHub Actions cron ke
-    kisi known trigger-slot ke paas (2-min tolerance ke andar) hai ya
-    nahi -- taaki manual runs ko 'normal schedule slot' vs 'unusual
-    off-schedule force-check' mein differentiate kar sakein."""
-    TOLERANCE_MIN = 2
-    hour = now.hour
-    minute = now.minute
-
-    # 3:40 PM -- din ka aakhri, unified (intraday + higher-TF) run
-    if hour == 15 and abs(minute - 40) <= TOLERANCE_MIN:
-        return True
-
-    # 9:30 AM se 3:30 PM tak, exactly har 15 min (0,15,30,45)
-    if 9 <= hour <= 15:
-        for target_min in (0, 15, 30, 45):
-            if abs(minute - target_min) <= TOLERANCE_MIN:
-                return True
-
-    return False
 
 
 RSI_CROSS_INTRADAY_TFS = ["30m", "45m", "1H", "2H", "75m", "90m", "150m", "3H", "4H"]
@@ -1935,6 +1933,13 @@ def main() -> None:
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
 
+    if not in_scan_window():
+        print(
+            f"Abhi {now.strftime('%I:%M %p')} IST hai -- scan window "
+            f"(9:15 AM se 4:00 PM) ke bahar. Kuch nahi karna."
+        )
+        return
+
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
         due_tfs = timeframes_due_now()
@@ -1952,13 +1957,12 @@ def main() -> None:
         # mein hai hi nahi), to woh clearly ek deliberate force-check
         # hai -- us case mein higher-TF bhi chala do, chahe hour kuch
         # bhi ho.
-        is_manual_run = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
-        is_unusual_manual_run = is_manual_run and not is_known_schedule_time(now)
-        # Din ka aakhri, unified run 3:40 PM par hota hai -- yahi
-        # higher-TF/EOD scan ka asli trigger hai (4 PM wala alag slot
-        # ab nahi hai).
-        is_scheduled_eod_time = now.hour == 15 and now.minute >= 35
-        is_eod_window = is_scheduled_eod_time or is_unusual_manual_run
+        # EOD ab SIRF waqt se tay hota hai (3:35-4:00 PM). Pehle koi bhi
+        # off-schedule manual run bhi EOD force kar deta tha -- aur bahar ka
+        # scheduler roz 8:30 AM par workflow_dispatch maar raha tha, jo kisi
+        # known slot mein nahi aata, to subah 8:30 par hi poora higher-TF
+        # scan chal jaata tha.
+        is_eod_window = is_eod_now()
 
         mid_bb_due_tfs = NEW_PATTERN_TIMEFRAMES if is_eod_window else []
         rsi_cross_due_tfs = rsi_cross_due_now()
