@@ -255,8 +255,19 @@ SCAN_TIMEFRAMES = INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES
 # yaani delayed run ko 30m/75m/150m "due" lagte the aur wo raat ko purani
 # candles par alert bhej deta tha.
 SCAN_WINDOW_START_MINUTES = 9 * 60 + 15    # 9:15 AM
-SCAN_WINDOW_END_MINUTES = 16 * 60          # 4:00 PM -- iske baad kuch nahi
-EOD_START_MINUTES = 15 * 60 + 35           # 3:35 PM -- higher TFs sirf yahan
+SCAN_WINDOW_END_MINUTES = 16 * 60          # 4:00 PM -- INTRADAY iske baad band
+EOD_START_MINUTES = 15 * 60 + 35           # 3:35 PM -- EOD yahan se shuru
+EOD_END_MINUTES = 23 * 60 + 59             # raat tak EOD chal sakta hai
+
+# Higher timeframes ke liye late run se koi farak nahi padta -- daily candle
+# 3:30 par band ho jaati hai, use 3:35 par scan karo ya 8 baje, nateeja wahi.
+# Isliye EOD ki window raat tak khuli rakhte hain.
+# Zaroori kyun: GitHub ka cron ghanton late aata hai (is repo mein 19:02,
+# 20:12, 20:24 IST tak dekha gaya) aur user ka apna dispatcher 3:15 par ruk
+# jaata hai. Pehle EOD window sirf 3:35-4:00 thi, to EOD run kabhi chala hi
+# nahi aur higher-TF + Mid-BB channels 2 Oct se chup pade the.
+# Intraday ka guard waise hi rehta hai -- raat ko purani candles par
+# intraday alert nahi jaana chahiye.
 
 
 def _minutes_now() -> int:
@@ -270,9 +281,15 @@ def in_scan_window() -> bool:
 
 
 def is_eod_now() -> bool:
-    """Din ka aakhri run -- 3:35 PM se 4:00 PM ke beech. Higher timeframes
-    SIRF yahan scan hote hain, din mein ek hi baar."""
-    return EOD_START_MINUTES <= _minutes_now() < SCAN_WINDOW_END_MINUTES
+    """3:35 PM se raat tak -- higher timeframes aur Mid-BB yahan scan hote hain."""
+    return EOD_START_MINUTES <= _minutes_now() <= EOD_END_MINUTES
+
+
+def is_late_eod() -> bool:
+    """EOD window mein hain par market hours ke bahar (4 PM ke baad).
+    Aise run mein SIRF higher TFs chalte hain -- intraday force nahi hota,
+    warna 8 baje purani intraday candles par alert chala jayega."""
+    return is_eod_now() and not in_scan_window()
 
 
 def timeframes_due_now() -> List[str]:
@@ -1933,12 +1950,17 @@ def main() -> None:
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
 
-    if not in_scan_window():
+    if not in_scan_window() and not is_eod_now():
         print(
-            f"Abhi {now.strftime('%I:%M %p')} IST hai -- scan window "
-            f"(9:15 AM se 4:00 PM) ke bahar. Kuch nahi karna."
+            f"Abhi {now.strftime('%I:%M %p')} IST hai -- na scan window "
+            f"(9:15 AM - 4:00 PM) mein, na EOD window (3:35 PM ke baad). Kuch nahi karna."
         )
         return
+    if is_late_eod():
+        print(
+            f"Abhi {now.strftime('%I:%M %p')} IST -- LATE EOD run. "
+            f"Sirf higher timeframes + Mid-BB; intraday skip."
+        )
 
     syms_nse, syms_yf = get_fo_symbols()
     if RUN_SCANNER:
@@ -1971,8 +1993,14 @@ def main() -> None:
             # aur higher dono, chahe us waqt kisi TF ka boundary na pada ho.
             # Warna 3:40 par elapsed 385 min hota hai aur 30m/45m/1H jaise TFs
             # due hi nahi nikalte, yaani din ka aakhri look unpe milta hi nahi.
-            due_tfs = list(dict.fromkeys(INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES))
-            rsi_cross_due_tfs = list(RSI_CROSS_TIMEFRAMES)
+            if is_late_eod():
+                # 4 PM ke baad aaya hua EOD -- intraday candles purani ho
+                # chuki hain, to sirf higher TFs.
+                due_tfs = list(HIGHER_TIMEFRAMES)
+                rsi_cross_due_tfs = list(RSI_CROSS_HIGHER_TFS)
+            else:
+                due_tfs = list(dict.fromkeys(INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES))
+                rsi_cross_due_tfs = list(RSI_CROSS_TIMEFRAMES)
 
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
