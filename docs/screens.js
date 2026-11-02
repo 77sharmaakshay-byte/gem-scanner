@@ -299,12 +299,13 @@
 
   // TradingView app mein kholo, website par nahi.
   //
-  // Android: intent:// link seedha app ke package par jaata hai, aur app na
-  // ho to browser_fallback_url website khol deta hai.
-  // iOS aur baaki: saada https link. TradingView ka app universal link
-  // handle karta hai, to app laga ho to wahi khulta hai; warna website.
-  // target=_blank jaan-boojh kar nahi lagaya -- usse iOS app ko hand-off
-  // nahi karta, seedha browser mein khul jaata hai.
+  // Android: intent:// seedha app ke package par jaata hai, app na ho to
+  // browser_fallback_url website khol deta hai. Ye bharosemand hai.
+  //
+  // iOS: TradingView ne koi URL scheme publish nahi kiya hai, aur saada
+  // https link app ko hand off karega ya nahi ye app ke universal links
+  // par nirbhar hai. Isliye teen tareeke rakhe hain aur chunav Setup
+  // screen par hai -- jo aapke phone par chale wahi rakh lo.
   function tvLink(sym) {
     var web = 'https://www.tradingview.com/chart/?symbol=NSE%3A' + encodeURIComponent(sym);
     if (/Android/i.test(navigator.userAgent)) {
@@ -314,7 +315,9 @@
         'S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
       return 'href="' + esc(intent) + '"';
     }
-    return 'href="' + esc(web) + '" rel="noopener"';
+    // href website par rehta hai taaki long-press se copy/share kaam kare;
+    // tap ko app.js pakad kar chune hue tareeke se kholta hai.
+    return 'href="' + esc(web) + '" rel="noopener" data-act="tv" data-v="' + esc(sym) + '"';
   }
 
   /* ---------------- Stock detail ---------------- */

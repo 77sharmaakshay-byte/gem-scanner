@@ -8,7 +8,7 @@
   var WORKFLOW = 'scanner.yml';
   var ACTIONS_URL = 'https://github.com/' + REPO + '/actions/workflows/' + WORKFLOW;
 
-  var st, render, token;
+  var st, render, token, tvMode;
 
   /* ---------------- on-demand scan ---------------- */
 
@@ -123,6 +123,25 @@
       '" target="_blank" rel="noopener" style="color:#7AA2FF">GitHub Actions par khud "Run workflow"</a> ' +
       'dabane se bhi wahi scan chalta hai.</div>';
 
+    var mode = tvMode ? tvMode() : 'app';
+    html += '<div class="label">TRADINGVIEW KAISE KHOLE</div><div class="chips">' +
+      [['app', 'App (koshish karo)'], ['shortcut', 'Apple Shortcut'], ['web', 'Website']]
+        .map(function (p) {
+          return '<button class="chip" type="button" data-act="tv-mode" data-v="' + p[0] + '"' +
+            ' aria-pressed="' + (mode === p[0]) + '">' + V.esc(p[1]) + '</button>';
+        }).join('') + '</div>';
+
+    html += '<div class="note">TradingView ne iPhone ke liye koi official link ' +
+      'nahi diya hai, isliye teen tareeke rakhe hain -- jo aapke phone par chale ' +
+      'wahi rakh lo.<br><br>' +
+      '<b>App</b>: pehle app kholne ki koshish, 1.2 second mein na khule to website. ' +
+      'Agar Safari "cannot open the page" dikhaye to iska matlab ye tareeka aapke ' +
+      'phone par nahi chalta -- Shortcut wala chun lo.<br>' +
+      '<b>Apple Shortcut</b>: Shortcuts app mein ek shortcut banao jiska naam ' +
+      '<b>TradingView Chart</b> ho, usme "Open App → TradingView" daalo. ' +
+      'Ye hamesha chalta hai.<br>' +
+      '<b>Website</b>: seedha browser mein chart.</div>';
+
     html += '<div class="label">FEED</div>' +
       '<div class="note">Aakhri scan: <b>' + V.esc(feed.scanned || '--') + '</b><br>' +
       'Alerts: <b>' + (st.allAlerts.length) + '</b> · Universe rows: <b>' + st.universe.length + '</b><br>' +
@@ -136,6 +155,7 @@
   global.Scan = {
     init: function (deps) {
       st = deps.st; render = deps.render; token = deps.token;
+      tvMode = deps.tvMode;
     },
     now: scanNow,
     check: checkRun,

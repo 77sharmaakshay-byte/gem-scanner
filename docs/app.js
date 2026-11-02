@@ -10,6 +10,7 @@
   var LS_FEED = 'sba.feed';
   var LS_FILTER = 'sba.filter';
   var LS_SQ = 'sba.sq';
+  var LS_TV = 'sba.tv';
 
   var st = {
     feed: null,
@@ -159,6 +160,45 @@
       });
   }
 
+  /* ---------------- TradingView ---------------- */
+
+  function tvMode() {
+    try { return localStorage.getItem(LS_TV) || 'app'; } catch (e) { return 'app'; }
+  }
+
+  function tvShortcutName() {
+    try { return localStorage.getItem('sba.tvshortcut') || 'TradingView Chart'; }
+    catch (e) { return 'TradingView Chart'; }
+  }
+
+  // iOS par app kholne ki koshish. Scheme registered na ho to Safari ek
+  // error dialog dikhata hai aur page wahin rehta hai -- isliye 1.2 sec
+  // baad website par chale jaate hain. Agar app khul gaya to tab tak page
+  // chhup chuka hoga, aur hum kuch nahi karte (warna wapas aate hi
+  // website khul jaati).
+  function openTV(sym, webUrl) {
+    var mode = tvMode();
+    if (mode === 'web') { location.href = webUrl; return; }
+
+    if (mode === 'shortcut') {
+      location.href = 'shortcuts://run-shortcut?name=' +
+        encodeURIComponent(tvShortcutName()) +
+        '&input=text&text=' + encodeURIComponent('NSE:' + sym);
+      return;
+    }
+
+    var hidden = false;
+    var mark = function () { hidden = true; };
+    document.addEventListener('visibilitychange', mark);
+    window.addEventListener('pagehide', mark);
+    setTimeout(function () {
+      document.removeEventListener('visibilitychange', mark);
+      window.removeEventListener('pagehide', mark);
+      if (!hidden && !document.hidden) location.href = webUrl;
+    }, 1200);
+    location.href = 'tradingview://chart?symbol=NSE%3A' + encodeURIComponent(sym);
+  }
+
   /* ---------------- routing ---------------- */
 
   function parseRoute() {
@@ -279,6 +319,19 @@
     var val = el.getAttribute('data-v');
     Shell.haptic();
 
+    if (act === 'tv') {
+      ev.preventDefault();
+      openTV(val, el.getAttribute('href'));
+      return;
+    }
+    if (act === 'tv-mode') {
+      try { localStorage.setItem(LS_TV, val); } catch (e) { /* ignore */ }
+      st.runNote = 'TradingView ab ' + (val === 'app' ? 'app mein kholne ki koshish karega'
+        : val === 'shortcut' ? 'Apple Shortcut se khulega' : 'website mein khulega') + '.';
+      render();
+      return;
+    }
+
     if (act === 'hint-off') { Shell.hintOff(); render(); return; }
 
     if (act === 'sq-tf') { st.sq.tf = val; writeJSON(LS_SQ, st.sq); render(); }
@@ -379,11 +432,15 @@
     if (typeof savedSq.bars === 'number') st.sq.bars = savedSq.bars;
   }
 
+  // Pehli render se PEHLE -- cached feed hone par boot par hi render
+  // chalta hai, aur agar us waqt route #/settings hua to Scan ke paas
+  // token/render nahi hote aur screen crash kar jaati hai.
+  Scan.init({ st: st, render: render, token: token, tvMode: tvMode });
+
   var cached = readJSON(LS_FEED, null);
   if (cached) { adopt(cached); setStamp(); render(); }
   load(false);
 
-  Scan.init({ st: st, render: render, token: token });
   Shell.init(ptrEl, function () { return load(true); });
   setInterval(setStamp, 60000);
 
