@@ -30,12 +30,25 @@
   var INTRADAY = ['5m', '15m', '30m', '45m', '1H', '75m', '90m', '2H', '150m', '3H', '4H'];
   var HIGHER = ['1D', '2D', '3D', '1W', '1M', '6M'];
 
+  // 'rsi' tightness ko RELATIVE naapta hai -- width apne 20-bar low se
+  // kitni guna. Isme do stock jinki band 12 aur 24 chaudi hai, dono 1.00x
+  // par barabar lagte hain.
+  // 'rsinum' seedha BAND KA NUMBER leta hai -- upper minus lower, RSI
+  // points mein. Isme 12 wala hamesha 24 wale se tight hai, chahe uska
+  // apna low kuch bhi ho. Dono rakhe hain taaki naap kar tay ho sake
+  // kaunsa behtar chalta hai.
   var BANDS = [
-    { id: 'rsi', name: 'RSI BB', ratio: 'rratio', width: 'rsiw', unit: '' },
-    { id: 'price', name: 'Price BB', ratio: 'pratio', width: 'prw', unit: '%' },
-    { id: 'both', name: 'Dono', ratio: 'both', width: 'rsiw', unit: '' },
-    { id: 'mid', name: 'Mid-BB', ratio: 'rratio', width: 'rsiw', unit: '' }
+    { id: 'rsi', name: 'RSI %', ratio: 'rratio', width: 'rsiw', unit: '', rel: true },
+    { id: 'rsinum', name: 'RSI no.', ratio: 'rsiw', width: 'rsiw', unit: '', rel: false },
+    { id: 'price', name: 'Price', ratio: 'pratio', width: 'prw', unit: '%', rel: true },
+    { id: 'both', name: 'Dono', ratio: 'both', width: 'rsiw', unit: '', rel: true },
+    { id: 'mid', name: 'Mid-BB', ratio: 'rratio', width: 'rsiw', unit: '', rel: true }
   ];
+
+  function bandOf(id) {
+    for (var i = 0; i < BANDS.length; i++) if (BANDS[i].id === id) return BANDS[i];
+    return BANDS[0];
+  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -213,8 +226,7 @@
       if (a == null || b == null) return null;
       return Math.max(a, b);
     }
-    var key = band === 'price' ? 'pratio' : 'rratio';
-    return row[key];
+    return row[bandOf(band).ratio];
   }
 
   // "Squeeze kitni candle pehle tha" -- har band ka apna. Price BB tab par
@@ -224,7 +236,7 @@
     var p = row.psqz_ago == null ? 999 : row.psqz_ago;
     if (band === 'price') return p;
     if (band === 'both') return Math.max(r, p);
-    return r;
+    return r;  // rsi, rsinum aur mid -- teenon RSI ki umar dekhte hain
   }
 
   function funnelRows(st) {
@@ -252,8 +264,8 @@
     // Barabari ratio par tootti hai asli chaudai se -- dono 1.000x par
     // hon to jiski band sach much patli hai wo upar. Isi se slider 1 par
     // le jaane par sabse tight ek naam bachta hai.
-    var band = BANDS.filter(function (b) { return b.id === s.band; })[0];
-    var wkey = band ? band.width : 'rsiw';
+    var band = bandOf(s.band);
+    var wkey = band.width;
     rows = pool.filter(function (r) {
       return ratioOf(r, s.band) != null;
     }).sort(function (a, b) {
@@ -271,7 +283,7 @@
 
   function funnelList(st, res) {
     var s = st.sq;
-    var band = BANDS.filter(function (b) { return b.id === s.band; })[0];
+    var band = bandOf(s.band);
     if (!res.rows.length) {
       return '<p class="empty">' + (res.pool
         ? 'Itna tight koi nahi. Slider thoda dheela karo.'
@@ -280,11 +292,17 @@
     return res.rows.map(function (r) {
       var ratio = ratioOf(r, s.band);
       var width = r[band.width];
-      var pct = Math.max(4, Math.min(100, Math.round(((ratio || 1) / 2) * 100)));
+      var scale = band.rel ? (ratio || 1) / 2 : (ratio || 0) / 50;
+      var pct = Math.max(4, Math.min(100, Math.round(scale * 100)));
       var ago = agoOf(r, s.band);
       var meta;
       if (s.view === 'open') {
-        meta = sqzText(ago) + ' · ab ' + num(ratio, 2) + 'x';
+        meta = sqzText(ago) + (band.rel ? ' · ab ' + num(ratio, 2) + 'x' : '');
+      } else if (s.band === 'rsinum') {
+        // Yahan ratio hi band ki chaudai hai. Saath mein relative number
+        // bhi dikhao, taaki dono paimane ek saath tul sakein.
+        meta = 'band ' + num(r.rsiw, 2) + ' points chaudi' +
+          (r.rratio != null ? ' · ' + num(r.rratio, 2) + 'x apne low se' : '');
       } else if (s.band === 'mid') {
         meta = (r.mbb_b ? 'mid-BB ke upar close' : 'mid-BB ke neeche close') +
           ' · ' + num(ratio, 2) + 'x low se';
@@ -305,6 +323,13 @@
         '<span class="small">width</span></span>' +
       '</a>';
     }).join('');
+  }
+
+  // Cutoff ka matlab mode ke saath badalta hai: relative mode mein guna,
+  // number mode mein seedhe points.
+  function cutText(bandId, cut) {
+    var b = bandOf(bandId);
+    return b.rel ? num(cut, 2) + 'x' : num(cut, 2) + (b.unit || ' pts');
   }
 
   function viewSqueeze(st) {
@@ -338,7 +363,8 @@
     html += '<div class="panel">' +
       '<div class="panel-head">' +
         '<label class="k" for="sq-range" id="sq-label">' +
-          (isOpen ? 'SQUEEZE KITNE CANDLE PEHLE' : 'SABSE TIGHT KITNE') +
+          (isOpen ? 'SQUEEZE KITNE CANDLE PEHLE'
+            : (s.band === 'rsinum' ? 'SABSE PATLI BAND -- KITNE' : 'SABSE TIGHT KITNE')) +
         '</label>' +
         '<span class="v num" id="sq-val">' +
           (isOpen ? '≤ ' + s.bars : 'top ' + top) +
@@ -353,7 +379,7 @@
         '<span>' + (isOpen ? '20 candle' : 'sab ' + (res.max || 0)) + '</span></div>' +
       '<div class="count"><b class="num" id="sq-count">' + res.rows.length + '</b>' +
         '<span id="sq-note">stock · ' + res.pool + ' mein se (' + esc(s.tf) + ')' +
-        (res.cut != null ? ' · cutoff ' + num(res.cut, 2) + 'x' : '') + '</span></div>' +
+        (res.cut != null ? ' · cutoff ' + cutText(s.band, res.cut) : '') + '</span></div>' +
     '</div>';
 
     html += '<div class="btnrow">' +
@@ -523,6 +549,7 @@
     filter: viewFilter,
     stock: viewStock,
     funnelRows: funnelRows,
-    funnelList: funnelList
+    funnelList: funnelList,
+    cutText: cutText
   };
 })(window);

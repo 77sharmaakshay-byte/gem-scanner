@@ -381,7 +381,7 @@
     var noteEl = document.getElementById('sq-note');
     if (noteEl && st.sq.view !== 'open') {
       noteEl.textContent = 'stock · ' + res.pool + ' mein se (' + st.sq.tf + ')' +
-        (res.cut != null ? ' · cutoff ' + res.cut.toFixed(2) + 'x' : '');
+        (res.cut != null ? ' · cutoff ' + V.cutText(st.sq.band, res.cut) : '');
     }
     if (valEl) {
       valEl.textContent = st.sq.view === 'open'
