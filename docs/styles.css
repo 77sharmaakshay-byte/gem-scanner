@@ -431,3 +431,5 @@ body[data-detail="1"] .brand { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.row .meta.dim { color: var(--mute2); font-size: 10px; }

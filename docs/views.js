@@ -2,15 +2,27 @@
 (function (global) {
   'use strict';
 
+  // Naam wahi jo setup asal mein karta hai. Pehle 'Price-BB squeeze' aur
+  // 'RSI-BB squeeze' se lagta tha ki ek price ka squeeze hai doosra RSI ka
+  // -- asal mein teeno aapas mein alag-alag hain: sirf price, sirf RSI, ya
+  // dono. Jiska jo haal hai wahi likha hai.
   var SETUPS = [
-    { id: 'RSI_BB_Cross_Setup', name: 'RSI-BB cross', kind: 'cross' },
-    { id: 'Gem_Setup_Intraday', name: 'Gem intraday', kind: 'gem' },
-    { id: 'Gem_Setup_HigherTF', name: 'Gem higher TF', kind: 'gem' },
-    { id: 'Price_BB_Squeeze', name: 'Price-BB squeeze', kind: 'sqz' },
-    { id: 'RSI_BB_Squeeze', name: 'RSI-BB squeeze', kind: 'sqz' },
-    { id: 'Both_Squeeze', name: 'Dono BB squeeze', kind: 'sqz' },
-    { id: 'New_HA_Squeeze_Setup', name: 'Naya HA setup', kind: 'ha' },
-    { id: 'Mid_BB_Reversal_Setup', name: 'Mid-BB reversal', kind: 'mid' }
+    { id: 'RSI_BB_Cross_Setup', name: 'RSI band tod kar nikla', kind: 'cross',
+      desc: 'RSI apni Bollinger band ke bahar nikla, pichhli candle andar thi' },
+    { id: 'Gem_Setup_Intraday', name: 'Gem · intraday', kind: 'gem',
+      desc: 'Intraday ka composite gem setup' },
+    { id: 'Gem_Setup_HigherTF', name: 'Gem · higher TF', kind: 'gem',
+      desc: '1D/2D/3D par gem setup -- sirf EOD run mein bharta hai' },
+    { id: 'Price_BB_Squeeze', name: 'Sirf price tight', kind: 'sqz',
+      desc: 'Price bands tight, RSI ke nahi' },
+    { id: 'RSI_BB_Squeeze', name: 'Sirf RSI tight', kind: 'sqz',
+      desc: 'RSI bands tight, price ke nahi' },
+    { id: 'Both_Squeeze', name: 'Price + RSI dono tight', kind: 'sqz',
+      desc: 'Dono bands ek saath tight' },
+    { id: 'New_HA_Squeeze_Setup', name: 'Squeeze se breakout', kind: 'ha',
+      desc: 'HA close band ke bahar, squeeze pichhli 3 candle mein tha' },
+    { id: 'Mid_BB_Reversal_Setup', name: 'Middle BB palta', kind: 'mid',
+      desc: 'Strong HA candle middle BB cross karke pichhli 2 candle ke high/low se aage' }
   ];
 
   var TF_ORDER = ['5m', '15m', '30m', '45m', '1H', '75m', '90m', '2H', '150m',
@@ -139,7 +151,8 @@
     return '<a class="row" href="#/feed?setup=' + esc(s.id) + '">' +
       '<span class="badge-sq ' + cls + '">' + esc(s.kind.toUpperCase().slice(0, 5)) + '</span>' +
       '<span class="grow"><span class="name">' + esc(s.name) + '</span>' +
-      '<span class="meta">' + esc(sub) + '</span></span>' +
+      '<span class="meta">' + esc(s.desc || '') + '</span>' +
+      '<span class="meta dim">' + esc(sub) + '</span></span>' +
       (count ? '<span class="pill">' + count + '</span>' : '<span class="pill quiet">0</span>') +
     '</a>';
   }
@@ -153,10 +166,10 @@
       '<span class="pill" style="background:#F2F4F7">' + all.length + '</span></a>';
 
     var groups = [
-      { title: 'RSI-BB CROSS', ids: ['RSI_BB_Cross_Setup'], cls: 'eod' },
-      { title: 'GEM & SQUEEZE', ids: ['Gem_Setup_Intraday', 'Gem_Setup_HigherTF',
+      { title: 'BAND TODNA', ids: ['RSI_BB_Cross_Setup'], cls: 'eod' },
+      { title: 'GEM AUR TIGHT BANDS', ids: ['Gem_Setup_Intraday', 'Gem_Setup_HigherTF',
         'Price_BB_Squeeze', 'RSI_BB_Squeeze', 'Both_Squeeze', 'New_HA_Squeeze_Setup'], cls: '' },
-      { title: 'MID-BB REVERSAL', ids: ['Mid_BB_Reversal_Setup'], cls: 'mid' }
+      { title: 'PALATNA', ids: ['Mid_BB_Reversal_Setup'], cls: 'mid' }
     ];
 
     groups.forEach(function (g) {
@@ -364,6 +377,26 @@
     return html;
   }
 
+  // TradingView app mein kholo, website par nahi.
+  //
+  // Android: intent:// link seedha app ke package par jaata hai, aur app na
+  // ho to browser_fallback_url website khol deta hai.
+  // iOS aur baaki: saada https link. TradingView ka app universal link
+  // handle karta hai, to app laga ho to wahi khulta hai; warna website.
+  // target=_blank jaan-boojh kar nahi lagaya -- usse iOS app ko hand-off
+  // nahi karta, seedha browser mein khul jaata hai.
+  function tvLink(sym) {
+    var web = 'https://www.tradingview.com/chart/?symbol=NSE%3A' + encodeURIComponent(sym);
+    if (/Android/i.test(navigator.userAgent)) {
+      var intent = 'intent://www.tradingview.com/chart/?symbol=NSE%3A' +
+        encodeURIComponent(sym) +
+        '#Intent;scheme=https;package=com.tradingview.tradingviewapp;' +
+        'S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+      return 'href="' + esc(intent) + '"';
+    }
+    return 'href="' + esc(web) + '" rel="noopener"';
+  }
+
   /* ---------------- Stock detail ---------------- */
 
   function viewStock(st, sym, tf) {
@@ -429,8 +462,7 @@
       }).join('');
     }
 
-    html += '<div class="btnrow"><a class="btn wide" target="_blank" rel="noopener"' +
-      ' href="https://www.tradingview.com/chart/?symbol=NSE%3A' + encodeURIComponent(sym) + '">' +
+    html += '<div class="btnrow"><a class="btn wide" ' + tvLink(sym) + '>' +
       'TradingView mein kholo</a></div><div class="spacer"></div>';
     return html;
   }
