@@ -20,6 +20,7 @@
     alerts: [],
     universe: [],
     feedTfs: [],
+    univTfs: [],
     filter: { setups: [], tfs: [], side: '', maxBars: 999 },
     sq: { tf: '1D', band: 'rsi', view: 'tight', thresh: 1.10, bars: 4 },
     runNote: '',
@@ -72,8 +73,16 @@
     st.feedTfs = Object.keys(seen).sort(function (a, b) {
       return V.tfRank(a) - V.tfRank(b);
     });
-    if (st.feedTfs.length && st.feedTfs.indexOf(st.sq.tf) < 0) {
-      st.sq.tf = st.feedTfs.indexOf('1D') >= 0 ? '1D' : st.feedTfs[0];
+    // Squeeze funnel sirf universe rows par chalta hai. Alert mein 1D ho
+    // sakta hai jabki uska universe abhi scan nahi hua (higher TF 3:35 par
+    // chalta hai) -- isliye uske chips alag list se aate hain.
+    var seenU = {};
+    st.universe.forEach(function (r) { seenU[r.tf] = true; });
+    st.univTfs = Object.keys(seenU).sort(function (a, b) {
+      return V.tfRank(a) - V.tfRank(b);
+    });
+    if (st.univTfs.length && st.univTfs.indexOf(st.sq.tf) < 0) {
+      st.sq.tf = st.univTfs.indexOf('1D') >= 0 ? '1D' : st.univTfs[st.univTfs.length - 1];
     }
     applyFilter();
   }

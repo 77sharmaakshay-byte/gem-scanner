@@ -247,7 +247,7 @@
   function viewSqueeze(st) {
     var s = st.sq;
     var res = funnelRows(st);
-    var tfs = st.feedTfs;
+    var tfs = (st.univTfs && st.univTfs.length) ? st.univTfs : st.feedTfs;
 
     var html = '<div class="chips scroll">' + tfs.map(function (tf) {
       return '<button class="chip" type="button" data-act="sq-tf" data-v="' + esc(tf) + '"' +
