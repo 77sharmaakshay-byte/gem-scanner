@@ -433,3 +433,6 @@ body[data-detail="1"] .brand { display: none; }
 }
 
 .row .meta.dim { color: var(--mute2); font-size: 10px; }
+
+.seg.small { height: 30px; margin-top: 8px; }
+.seg.small button { font-size: 10px; }

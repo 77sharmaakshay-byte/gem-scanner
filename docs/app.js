@@ -4,10 +4,7 @@
 (function (global) {
   'use strict';
 
-  var REPO = '77sharmaakshay-byte/gem-scanner';
-  var WORKFLOW = 'scanner.yml';
   var FEED_URL = 'feed.json';
-  var ACTIONS_URL = 'https://github.com/' + REPO + '/actions/workflows/' + WORKFLOW;
 
   var LS_TOKEN = 'sba.token';
   var LS_FEED = 'sba.feed';
@@ -21,8 +18,8 @@
     universe: [],
     feedTfs: [],
     univTfs: [],
-    filter: { setups: [], tfs: [], side: '', maxBars: 999 },
-    sq: { tf: '1D', band: 'rsi', view: 'tight', top: 25, bars: 4 },
+    filter: { setups: [], tfs: [], side: '', maxBars: 999, maxWidth: 0 },
+    sq: { tf: '1D', band: 'rsi', scale: 'rel', view: 'tight', top: 25, bars: 4 },
     runNote: '',
     loadError: ''
   };
@@ -84,6 +81,10 @@
     st.univTfs = Object.keys(seenU).sort(function (a, b) {
       return V.tfRank(a) - V.tfRank(b);
     });
+    // Alert rows mein band ki chaudai nahi hoti -- feed halki rakhne ke
+    // liye. Universe se jod kar har jagah dikha dete hain.
+    st.uidx = {};
+    st.universe.forEach(function (r) { st.uidx[r.sym + '|' + r.tf] = r; });
     if (st.univTfs.length && st.univTfs.indexOf(st.sq.tf) < 0) {
       st.sq.tf = st.univTfs.indexOf('1D') >= 0 ? '1D' : st.univTfs[st.univTfs.length - 1];
     }
@@ -100,6 +101,10 @@
       if (f.maxBars !== 999) {
         var bars = a.sqz_ago;
         if (bars === null || bars === undefined || bars > f.maxBars) return false;
+      }
+      if (f.maxWidth) {
+        var u = st.uidx[a.sym + '|' + a.tf];
+        if (!u || u.rsiw == null || u.rsiw > f.maxWidth) return false;
       }
       return true;
     });
@@ -154,129 +159,6 @@
       });
   }
 
-  /* ---------------- on-demand scan ---------------- */
-
-  function scanNow(btn) {
-    var tok = token();
-    if (!tok) {
-      st.runNote = 'Pehle neeche token daalo, ya GitHub par khud chalao.';
-      render();
-      return;
-    }
-    btn.disabled = true;
-    st.runNote = 'Scan trigger kar raha hoon…';
-    render();
-
-    fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/' + WORKFLOW + '/dispatches', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + tok,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ ref: 'main', inputs: { force: 'true' } })
-    })
-      .then(function (res) {
-        if (res.status === 204) {
-          st.runNote = 'Scan queue mein lag gaya. Poora scan ~20 min leta hai; ' +
-            'ho jaane par upar wala refresh button dabao.';
-        } else if (res.status === 401 || res.status === 403) {
-          st.runNote = 'Token ne mana kar diya (' + res.status + '). ' +
-            'Scope mein "Actions: read and write" hona chahiye.';
-        } else if (res.status === 404) {
-          st.runNote = 'Repo ya workflow nahi mila (404). Token ka access check karo.';
-        } else {
-          st.runNote = 'GitHub ne ' + res.status + ' bheja.';
-        }
-      })
-      .catch(function (err) {
-        st.runNote = 'Trigger fail: ' + err.message;
-      })
-      .then(function () {
-        render();
-      });
-  }
-
-  function checkRun() {
-    var tok = token();
-    if (!tok) {
-      // Chup-chaap wapas aana galat tha -- purana note pada rehta tha aur
-      // lagta tha ki button chal gaya.
-      st.runNote = 'Status dekhne ke liye bhi token chahiye.';
-      render();
-      return;
-    }
-    st.runNote = 'Status dekh raha hoon…';
-    render();
-    fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/' + WORKFLOW +
-      '/runs?per_page=1', {
-      headers: {
-        'Authorization': 'Bearer ' + tok,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
-    })
-      .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
-      .then(function (data) {
-        var run = data.workflow_runs && data.workflow_runs[0];
-        if (!run) { st.runNote = 'Koi run nahi mila.'; return; }
-        var when = new Date(run.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-        st.runNote = 'Aakhri run: ' + run.status +
-          (run.conclusion ? ' / ' + run.conclusion : '') + ' · ' + when;
-      })
-      .catch(function (err) { st.runNote = 'Status nahi mila: ' + err.message; })
-      .then(render);
-  }
-
-  /* ---------------- settings view ---------------- */
-
-  function viewSettings() {
-    var tok = token();
-    var feed = st.feed || {};
-    var html = '<div class="label">ON-DEMAND SCAN</div>' +
-      '<div class="btnrow">' +
-      '<button class="btn wide" type="button" data-act="scan-now">Scan abhi chalao</button>' +
-      '</div>' +
-      '<div class="btnrow">' +
-      '<button class="btn ghost wide" type="button" data-act="check-run">Run ka status</button>' +
-      '</div>';
-
-    if (st.runNote) {
-      html += '<div class="note"><b>' + V.esc(st.runNote) + '</b></div>';
-    }
-
-    html += '<div class="note">Scan GitHub Actions par chalta hai, phone par nahi. ' +
-      'Poora scan ~20 minute leta hai, phir feed apne aap update ho jaati hai.</div>';
-
-    html += '<label class="field"><span>GITHUB TOKEN</span>' +
-      '<input id="tok" type="password" autocomplete="off" spellcheck="false"' +
-      ' placeholder="' + (tok ? 'saved hai -- badalna ho to naya daalo' : 'github_pat_…') + '"></label>' +
-      '<div class="btnrow">' +
-      '<button class="btn wide" type="button" data-act="save-token">Token save karo</button>' +
-      (tok ? '<button class="btn ghost" type="button" data-act="clear-token">Hatao</button>' : '') +
-      '</div>';
-
-    html += '<div class="note">Token sirf <b>isi phone ke browser</b> mein rehta hai -- ' +
-      'na feed mein jaata hai, na GitHub repo mein. Fine-grained token banao jisme ' +
-      'sirf <b>is ek repo</b> ka <b>Actions: read and write</b> ho, aur kuch nahi. ' +
-      '<span class="warn">Jiske haath ye phone lage wo scan chala sakta hai</span> -- ' +
-      'isliye isse zyada permission mat do.</div>';
-
-    html += '<div class="note">Token nahi dena? <a href="' + ACTIONS_URL +
-      '" target="_blank" rel="noopener" style="color:#7AA2FF">GitHub Actions par khud "Run workflow"</a> ' +
-      'dabane se bhi wahi scan chalta hai.</div>';
-
-    html += '<div class="label">FEED</div>' +
-      '<div class="note">Aakhri scan: <b>' + V.esc(feed.scanned || '--') + '</b><br>' +
-      'Alerts: <b>' + (st.allAlerts.length) + '</b> · Universe rows: <b>' + st.universe.length + '</b><br>' +
-      'Timeframes: <b>' + V.esc(st.feedTfs.join(', ') || '--') + '</b></div>' +
-      '<div class="btnrow"><button class="btn ghost wide" type="button" data-act="reload">' +
-      'Feed dobara load karo</button></div>';
-
-    return html + '<div class="spacer"></div>';
-  }
-
   /* ---------------- routing ---------------- */
 
   function parseRoute() {
@@ -304,7 +186,7 @@
     if (page === 'feed' && r.query.setup) {
       st.filter = {
         setups: r.query.setup === '*' ? [] : [r.query.setup],
-        tfs: [], side: '', maxBars: 999
+        tfs: [], side: '', maxBars: 999, maxWidth: 0
       };
       writeJSON(LS_FILTER, st.filter);
       applyFilter();
@@ -324,7 +206,7 @@
     if (page === 'channels') html = V.channels(st);
     else if (page === 'squeeze') html = V.squeeze(st);
     else if (page === 'filter') html = V.filter(st);
-    else if (page === 'settings') html = viewSettings();
+    else if (page === 'settings') html = Scan.view();
     else if (page === 'stock') html = V.stock(st, r.parts[1] || '', r.parts[2] || '');
     else html = V.feed(st);
 
@@ -381,7 +263,7 @@
     var noteEl = document.getElementById('sq-note');
     if (noteEl && st.sq.view !== 'open') {
       noteEl.textContent = 'stock · ' + res.pool + ' mein se (' + st.sq.tf + ')' +
-        (res.cut != null ? ' · cutoff ' + V.cutText(st.sq.band, res.cut) : '');
+        (res.cut != null ? ' · cutoff ' + V.cutText(st.sq.band, res.cut, res.scale) : '');
     }
     if (valEl) {
       valEl.textContent = st.sq.view === 'open'
@@ -402,6 +284,7 @@
     if (act === 'sq-tf') { st.sq.tf = val; writeJSON(LS_SQ, st.sq); render(); }
     else if (act === 'sq-band') { st.sq.band = val; writeJSON(LS_SQ, st.sq); render(); }
     else if (act === 'sq-view') { st.sq.view = val; writeJSON(LS_SQ, st.sq); render(); }
+    else if (act === 'sq-scale') { st.sq.scale = val; writeJSON(LS_SQ, st.sq); render(); }
     else if (act === 'f-setup') {
       if (val === '*') st.filter.setups = [];
       else toggle(st.filter.setups, val);
@@ -413,16 +296,19 @@
     } else if (act === 'f-side') {
       st.filter.side = val === '*' ? '' : val;
       writeJSON(LS_FILTER, st.filter); applyFilter(); render();
+    } else if (act === 'f-width') {
+      st.filter.maxWidth = parseFloat(val) || 0;
+      writeJSON(LS_FILTER, st.filter); applyFilter(); render();
     } else if (act === 'f-bars') {
       st.filter.maxBars = parseInt(val, 10);
       writeJSON(LS_FILTER, st.filter); applyFilter(); render();
     } else if (act === 'f-reset') {
-      st.filter = { setups: [], tfs: [], side: '', maxBars: 999 };
+      st.filter = { setups: [], tfs: [], side: '', maxBars: 999, maxWidth: 0 };
       writeJSON(LS_FILTER, st.filter); applyFilter(); render();
     } else if (act === 'scan-now') {
-      scanNow(el);
+      Scan.now(el);
     } else if (act === 'check-run') {
-      checkRun();
+      Scan.check();
     } else if (act === 'save-token') {
       var input = document.getElementById('tok');
       var v = input && input.value.trim();
@@ -478,12 +364,16 @@
     if (!Array.isArray(st.filter[k])) st.filter[k] = [];
   });
   if (typeof st.filter.maxBars !== 'number') st.filter.maxBars = 999;
+  if (typeof st.filter.maxWidth !== 'number') st.filter.maxWidth = 0;
   if (typeof st.filter.side !== 'string') st.filter.side = '';
 
   var savedSq = readJSON(LS_SQ, null);
   if (savedSq && typeof savedSq === 'object') {
     st.sq.tf = savedSq.tf || st.sq.tf;
-    st.sq.band = savedSq.band || st.sq.band;
+    // 'rsinum' alag band hua karta tha; ab wo RSI band + absolute scale hai.
+    st.sq.band = savedSq.band === 'rsinum' ? 'rsi' : (savedSq.band || st.sq.band);
+    st.sq.scale = savedSq.band === 'rsinum' ? 'abs'
+      : (savedSq.scale === 'abs' ? 'abs' : 'rel');
     st.sq.view = savedSq.view === 'open' ? 'open' : 'tight';
     if (typeof savedSq.top === 'number') st.sq.top = savedSq.top;
     if (typeof savedSq.bars === 'number') st.sq.bars = savedSq.bars;
@@ -493,6 +383,7 @@
   if (cached) { adopt(cached); setStamp(); render(); }
   load(false);
 
+  Scan.init({ st: st, render: render, token: token });
   Shell.init(ptrEl, function () { return load(true); });
   setInterval(setStamp, 60000);
 
