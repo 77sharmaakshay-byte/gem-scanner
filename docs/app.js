@@ -291,8 +291,15 @@
     var r = parseRoute();
     var page = r.parts[0] || 'feed';
 
+    // Channel par click = "sirf ye channel dikhao". Pehle ye sirf setups
+    // badalta tha aur TF/side/bars wale filter laga rehte the -- to purana
+    // atka hua TF ya side har channel ko khali kar deta tha. Ab poora
+    // filter saaf hota hai. '*' ka matlab "saare signals".
     if (page === 'feed' && r.query.setup) {
-      st.filter.setups = [r.query.setup];
+      st.filter = {
+        setups: r.query.setup === '*' ? [] : [r.query.setup],
+        tfs: [], side: '', maxBars: 999
+      };
       writeJSON(LS_FILTER, st.filter);
       applyFilter();
       history.replaceState(null, '', '#/feed');

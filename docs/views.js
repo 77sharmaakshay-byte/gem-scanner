@@ -177,7 +177,7 @@
 
   function viewChannels(st) {
     var all = st.allAlerts;
-    var html = '<a class="row" href="#/feed">' +
+    var html = '<a class="row" href="#/feed?setup=*">' +
       '<span class="badge-sq">ALL</span>' +
       '<span class="grow"><span class="name">Saare signals</span>' +
       '<span class="meta">Har setup, har timeframe -- ek jagah</span></span>' +
