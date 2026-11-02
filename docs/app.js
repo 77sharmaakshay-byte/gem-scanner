@@ -22,7 +22,7 @@
     feedTfs: [],
     univTfs: [],
     filter: { setups: [], tfs: [], side: '', maxBars: 999 },
-    sq: { tf: '1D', band: 'rsi', view: 'tight', thresh: 1.10, bars: 4 },
+    sq: { tf: '1D', band: 'rsi', view: 'tight', top: 25, bars: 4 },
     runNote: '',
     loadError: ''
   };
@@ -365,10 +365,15 @@
     var valEl = document.getElementById('sq-val');
     if (countEl) countEl.textContent = res.rows.length;
     if (listEl) listEl.innerHTML = V.funnelList(st, res);
+    var noteEl = document.getElementById('sq-note');
+    if (noteEl && st.sq.view !== 'open') {
+      noteEl.textContent = 'stock · ' + res.pool + ' mein se (' + st.sq.tf + ')' +
+        (res.cut != null ? ' · cutoff ' + res.cut.toFixed(2) + 'x' : '');
+    }
     if (valEl) {
       valEl.textContent = st.sq.view === 'open'
         ? '≤ ' + st.sq.bars
-        : '≤ ' + st.sq.thresh.toFixed(2) + 'x';
+        : 'top ' + res.rows.length;
     }
   }
 
@@ -428,7 +433,7 @@
     if (!ev.target || ev.target.getAttribute('data-act') !== 'sq-range') return;
     var v = parseFloat(ev.target.value);
     if (st.sq.view === 'open') st.sq.bars = Math.round(v);
-    else st.sq.thresh = v;
+    else st.sq.top = Math.round(v);
     writeJSON(LS_SQ, st.sq);
     patchFunnel();
   });
@@ -467,7 +472,7 @@
     st.sq.tf = savedSq.tf || st.sq.tf;
     st.sq.band = savedSq.band || st.sq.band;
     st.sq.view = savedSq.view === 'open' ? 'open' : 'tight';
-    if (typeof savedSq.thresh === 'number') st.sq.thresh = savedSq.thresh;
+    if (typeof savedSq.top === 'number') st.sq.top = savedSq.top;
     if (typeof savedSq.bars === 'number') st.sq.bars = savedSq.bars;
   }
 

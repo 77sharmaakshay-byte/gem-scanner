@@ -217,19 +217,38 @@
       pool = pool.filter(function (r) { return r.mbb_b || r.mbb_s; });
     }
 
-    var rows;
+    var rows, cut = null;
     if (s.view === 'open') {
       rows = pool.filter(function (r) {
         var ago = agoOf(r, s.band);
         return ago >= 1 && ago <= s.bars;
       }).sort(function (a, b) { return agoOf(a, s.band) - agoOf(b, s.band); });
-    } else {
-      rows = pool.filter(function (r) {
-        var ratio = ratioOf(r, s.band);
-        return ratio != null && ratio <= s.thresh;
-      }).sort(function (a, b) { return ratioOf(a, s.band) - ratioOf(b, s.band); });
+      return { rows: rows, pool: pool.length, cut: null, max: pool.length };
     }
-    return { rows: rows, pool: pool.length };
+
+    // Ratio 1.00 se neeche ja hi nahi sakta -- width apne hi 20-bar low se
+    // tulti hai aur low usi window mein hai. 3D par 19 stock ek saath
+    // 1.000 par baith jaate hain, to ratio wala slider wahin ruk jaata
+    // tha. Isliye slider ab GINTI chalata hai: sabse tight se N.
+    //
+    // Barabari ratio par tootti hai asli chaudai se -- dono 1.000x par
+    // hon to jiski band sach much patli hai wo upar. Isi se slider 1 par
+    // le jaane par sabse tight ek naam bachta hai.
+    var band = BANDS.filter(function (b) { return b.id === s.band; })[0];
+    var wkey = band ? band.width : 'rsiw';
+    rows = pool.filter(function (r) {
+      return ratioOf(r, s.band) != null;
+    }).sort(function (a, b) {
+      var d = ratioOf(a, s.band) - ratioOf(b, s.band);
+      if (d) return d;
+      return (a[wkey] == null ? 1e9 : a[wkey]) - (b[wkey] == null ? 1e9 : b[wkey]);
+    });
+
+    var max = rows.length;
+    var top = Math.max(1, Math.min(s.top || max, max));
+    rows = rows.slice(0, top);
+    cut = rows.length ? ratioOf(rows[rows.length - 1], s.band) : null;
+    return { rows: rows, pool: pool.length, cut: cut, max: max };
   }
 
   function funnelList(st, res) {
@@ -297,24 +316,26 @@
     }).join('') + '</div>';
 
     var isOpen = s.view === 'open';
+    var top = Math.max(1, Math.min(s.top || res.max, res.max || 1));
     html += '<div class="panel">' +
       '<div class="panel-head">' +
         '<label class="k" for="sq-range" id="sq-label">' +
-          (isOpen ? 'SQUEEZE KITNE CANDLE PEHLE' : 'WIDTH APNE 20-BAR LOW SE') +
+          (isOpen ? 'SQUEEZE KITNE CANDLE PEHLE' : 'SABSE TIGHT KITNE') +
         '</label>' +
         '<span class="v num" id="sq-val">' +
-          (isOpen ? '≤ ' + s.bars : '≤ ' + s.thresh.toFixed(2) + 'x') +
+          (isOpen ? '≤ ' + s.bars : 'top ' + top) +
         '</span>' +
       '</div>' +
       '<input id="sq-range" type="range" data-act="sq-range"' +
-        ' min="' + (isOpen ? 1 : 1) + '"' +
-        ' max="' + (isOpen ? 20 : 2) + '"' +
-        ' step="' + (isOpen ? 1 : 0.01) + '"' +
-        ' value="' + (isOpen ? s.bars : s.thresh) + '">' +
-      '<div class="ends"><span>' + (isOpen ? 'abhi khula' : 'sabse tight') + '</span>' +
-        '<span>' + (isOpen ? '20 candle' : 'sab kuch') + '</span></div>' +
+        ' min="1"' +
+        ' max="' + (isOpen ? 20 : Math.max(1, res.max)) + '"' +
+        ' step="1"' +
+        ' value="' + (isOpen ? s.bars : top) + '">' +
+      '<div class="ends"><span>' + (isOpen ? 'abhi khula' : 'sirf sabse tight') + '</span>' +
+        '<span>' + (isOpen ? '20 candle' : 'sab ' + (res.max || 0)) + '</span></div>' +
       '<div class="count"><b class="num" id="sq-count">' + res.rows.length + '</b>' +
-        '<span>stock · ' + res.pool + ' mein se (' + esc(s.tf) + ')</span></div>' +
+        '<span id="sq-note">stock · ' + res.pool + ' mein se (' + esc(s.tf) + ')' +
+        (res.cut != null ? ' · cutoff ' + num(res.cut, 2) + 'x' : '') + '</span></div>' +
     '</div>';
 
     html += '<div class="btnrow">' +
