@@ -200,7 +200,13 @@
 
   function checkRun() {
     var tok = token();
-    if (!tok) return;
+    if (!tok) {
+      // Chup-chaap wapas aana galat tha -- purana note pada rehta tha aur
+      // lagta tha ki button chal gaya.
+      st.runNote = 'Status dekhne ke liye bhi token chahiye.';
+      render();
+      return;
+    }
     st.runNote = 'Status dekh raha hoon…';
     render();
     fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/' + WORKFLOW +

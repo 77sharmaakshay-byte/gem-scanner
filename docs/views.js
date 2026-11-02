@@ -389,11 +389,16 @@
           ' aria-pressed="' + on + '">' + esc(s.name) + '</button>';
       }).join('') + '</div>';
 
+    // Sirf wahi TF dikhao jo scanner asal mein scan karta hai. 5m kabhi
+    // scan nahi hota -- uska chip hamesha 0 deta tha.
+    var live = st.feedTfs && st.feedTfs.length ? st.feedTfs : INTRADAY.concat(HIGHER);
+    var fi = INTRADAY.filter(function (t) { return live.indexOf(t) >= 0; });
+    var fh = HIGHER.filter(function (t) { return live.indexOf(t) >= 0; });
     html += '<div class="label">TIMEFRAME</div>' +
       '<div class="chips"><button class="chip go" type="button" data-act="f-tf" data-v="*"' +
         ' aria-pressed="' + (!f.tfs.length) + '">Saare</button></div>' +
-      '<div class="sub">Intraday</div><div class="chips">' + chipRow('f-tf', INTRADAY, f.tfs) + '</div>' +
-      '<div class="sub">Higher TF · EOD</div><div class="chips">' + chipRow('f-tf', HIGHER, f.tfs) + '</div>';
+      (fi.length ? '<div class="sub">Intraday</div><div class="chips">' + chipRow('f-tf', fi, f.tfs) + '</div>' : '') +
+      (fh.length ? '<div class="sub">Higher TF · EOD</div><div class="chips">' + chipRow('f-tf', fh, f.tfs) + '</div>' : '');
 
     html += '<div class="label">DIRECTION</div><div class="chips">' +
       ['*', 'BUY', 'SELL'].map(function (v) {
