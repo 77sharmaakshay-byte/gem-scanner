@@ -120,7 +120,25 @@
   function viewFeed(st) {
     var alerts = st.alerts;
     if (!alerts.length) {
-      return '<p class="empty">Is filter par koi alert nahi.<br>Filter kholo ya scan ka intezaar karo.</p>';
+      // Khali screen ko batana chahiye KYUN khali hai. Filter chup-chaap
+      // laga reh jaata tha aur lagta tha ki scan hi nahi chala.
+      var f = st.filter;
+      var on = [];
+      f.setups.forEach(function (id) { on.push(setupName(id)); });
+      if (f.tfs.length) on.push(f.tfs.join(', '));
+      if (f.side) on.push(f.side);
+      if (f.maxBars !== 999) on.push('squeeze ke ' + f.maxBars + ' candle andar');
+
+      if (!st.allAlerts.length) {
+        return '<p class="empty">Feed mein abhi koi alert nahi.<br>' +
+          'Agle scan ka intezaar karo.</p>';
+      }
+      return '<p class="empty">Is filter par koi alert nahi.<br>' +
+        'Poori feed mein <b>' + st.allAlerts.length + '</b> alerts hain.</p>' +
+        '<div class="note" style="text-align:center">Laga hua filter:<br><b>' +
+        esc(on.join(' · ')) + '</b></div>' +
+        '<div class="btnrow"><button class="btn wide" type="button" data-act="f-reset">' +
+        'Filter hatao</button></div>';
     }
 
     var sorted = alerts.slice().sort(function (a, b) {
