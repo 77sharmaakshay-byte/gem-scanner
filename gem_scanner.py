@@ -413,42 +413,12 @@ ALWAYS_INCLUDE_SYMBOLS = [
     "DMART",
 ]
 
+# NSE ki live F&O list (fo_mktlots.csv) se liya gaya, 2 Nov 2026.
+# Ye sirf fallback hai -- get_fo_symbols() har run par NSE se taaza
+# list laane ki koshish karta hai. Purani frozen list mein 71 aise
+# naam the jo ab F&O mein hain hi nahi, aur 66 naye naam chhoot rahe the.
 FNO_STOCKS_RAW = [
-    "AARTIIND","ABB","ABBOTINDIA","ABCAPITAL","ABFRL","ACC","ADANIENT",
-    "ADANIPORTS","ALKEM","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP",
-    "APOLLOTYRE","ASHOKLEY","ASIANPAINT","ASTRAL","ATUL","AUBANK",
-    "AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG",
-    "BAJFINANCE","BALKRISIND","BANDHANBNK","BANKBARODA","BANKINDIA",
-    "BATAINDIA","BEL","BERGEPAINT","BHARATFORG","BHARTIARTL","BHEL",
-    "BIOCON","BLUEDART","BOSCHLTD","BPCL","BRITANNIA","BSOFT","CAMS",
-    "CANBK","CANFINHOME","CASTROLIND","CDSL","CESC","CGPOWER","CHAMBLFERT",
-    "CHOLAFIN","CIPLA","COALINDIA","COFORGE","COLPAL","CONCOR","COROMANDEL",
-    "CROMPTON","CUB","CUMMINSIND","DABUR","DALBHARAT","DEEPAKNTR",
-    "DELTACORP","DELHIVERY","DIVISLAB","DIXON","DLF","DRREDDY","EICHERMOT",
-    "ELGIEQUIP","EMAMILTD","ENDURANCE","ESCORTS","EXIDEIND","FEDERALBNK",
-    "FINNIFTY","FORTIS","GAIL","GLENMARK","GMRINFRA","GNFC","GODREJCP",
-    "GODREJPROP","GRANULES","GRAPHITE","GRASIM","GSPL","GUJGASLTD",
-    "HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO",
-    "HINDALCO","HINDCOPPER","HINDPETRO","HINDUNILVR","HONAUT","HUDCO",
-    "ICICIBANK","ICICIGI","ICICIPRULI","IDEA","IDFC","IDFCFIRSTB",
-    "IEX","IGL","INDHOTEL","INDIAMART","INDIGO","INDUSTOWER","INDUSINDBK",
-    "INFY","INTELLECT","IOB","IOC","IPCALAB","IRB","IRCTC","ISEC",
-    "ITC","JINDALSTEL","JKCEMENT","JSL","JSWENERGY","JSWSTEEL","JUBLFOOD",
-    "JUBLINGREA","KAJARIACER","KANSAINER","KEI","KOTAKBANK","KPIL",
-    "KRBL","LALPATHLAB","LAURUSLABS","LICHSGFIN","LT","LTFH","LTIM",
-    "LTTS","LUPIN","M&M","M&MFIN","MANAPPURAM","MARICO","MARUTI",
-    "MCX","METROPOLIS","MFSL","MGL","MPHASIS","MRF","MRPL","MSUMI",
-    "MUTHOOTFIN","NAM-INDIA","NATIONALUM","NAUKRI","NAVINFLUOR","NESTLEIND",
-    "NLCINDIA","NMDC","NTPC","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND",
-    "PEL","PERSISTENT","PETRONET","PFC","PIDILITIND","PIIND","PNB",
-    "POLYCAB","POWERGRID","PRESTIGE","PVRINOX","RAMCOCEM","RAYMOND",
-    "RECLTD","RELIANCE","RBLBANK","SAIL","SBICARD","SBILIFE","SBIN",
-    "SHREECEM","SHRIRAMFIN","SIEMENS","SJVN","SKFINDIA","SRF","SUNPHARMA",
-    "SUNTV","SUPREMEIND","SYNGENE","TATACHEM","TATACOMM","TATACONSUM",
-    "TATAELXSI","TATAMOTORS","TATAPOWER","TATASTEEL","TCS","TECHM",
-    "TIINDIA","TITAN","TORNTPHARM","TORNTPOWER","TRENT","TVSMOTOR","UBL",
-    "UCOBANK","ULTRACEMCO","UNITDSPR","UPL","VEDL","VOLTAS","WHIRLPOOL",
-    "WIPRO","ZEEL","ZOMATO","ZYDUSLIFE",
+    "360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ADANIPOWER","ALKEM","AMBER","AMBUJACEM","ANANDRATHI","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL","ATHERENERG","AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COCHINSHIP","COFORGE","COLPAL","CONCOR","COROMANDEL","CROMPTON","CUB","CUMMINSIND","DABUR","DATAPATTNS","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT","ENRIN","ETERNAL","FEDERALBNK","FORCEMOT","FORTIS","GAIL","GLENMARK","GMRAIRPORT","GODFRYPHLP","GODREJCP","GODREJPROP","GRASIM","GVT&D","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HYUNDAI","ICICIBANK","ICICIGI","ICICILIFE","IDEA","IDFCFIRSTB","IEX","INDHOTEL","INDIANB","INDIGO","INDUSINDBK","INDUSTOWER","INFY","INOXWIND","IOC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KARURVYSYA","KAYNES","KEI","KFINTECH","KOTAKBANK","KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTM","LUPIN","M&M","MAHABANK","MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MOTHERSON","MOTILALOFS","MPHASIS","MUTHOOTFIN","NAM-INDIA","NATIONALUM","NAUKRI","NAVINFLUOR","NBCC","NESTLEIND","NHPC","NMDC","NTPC","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA","PREMIERENE","PRESTIGE","RADICO","RBLBANK","RECLTD","RELIANCE","RVNL","SAGILITY","SAIL","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","SYRMA","TATACONSUM","TATAELXSI","TATAPOWER","TATASTEEL","TCS","TECHM","TIINDIA","TITAN","TMPV","TORNTPHARM","TRENT","TVSMOTOR","UJJIVANSFB","ULTRACEMCO","UNIONBANK","UNITDSPR","UNOMINDA","UPL","VBL","VEDL","VMM","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE",
 ]
 
 
@@ -496,29 +466,42 @@ def get_fo_symbols() -> Tuple[List[str], List[str]]:
     if requests is None:
         return fix_symbols(scanner_symbol_universe(FNO_STOCKS_RAW))
 
-    url = "https://archives.nseindia.com/content/fo/fo_mktlots.csv"
+    # NSE ne archives.nseindia.com band kar diya -- wo ab ek PDF circular par
+    # redirect karta hai, jisse pd.read_csv phat jaata tha aur scanner
+    # chupchap neeche wali frozen list par chala jaata tha. Nayi jagah:
+    url = "https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
         )
     }
+    # File mein index derivatives aur ek dohraya hua header bhi aata hai.
+    not_a_stock = {
+        "SYMBOL", "UNDERLYING", "NIFTY", "BANKNIFTY", "FINNIFTY",
+        "MIDCPNIFTY", "NIFTYNXT50", "NIFTYFPI",
+    }
 
     try:
         resp = requests.get(url, headers=headers, timeout=12)
         resp.raise_for_status()
         df = pd.read_csv(io.StringIO(resp.text))
-        col = df.columns[0]
-        syms = df[col].dropna().astype(str).str.strip().str.upper().tolist()
+        df.columns = [str(c).strip().upper() for c in df.columns]
+        # Pehla column UNDERLYING (poora company naam) hai, SYMBOL doosra --
+        # isliye column naam se lena zaroori hai, position se nahi.
+        if "SYMBOL" not in df.columns:
+            raise ValueError(f"SYMBOL column nahi mila, mile: {list(df.columns)[:5]}")
+        syms = df["SYMBOL"].dropna().astype(str).str.strip().str.upper().tolist()
         syms = [
             s for s in syms
-            if (s.isalpha() or "-" in s or "&" in s)
-            and len(s) > 1
-            and s not in ("SYMBOL", "UNDERLYING")
+            if len(s) > 1
+            and s not in not_a_stock
+            and all(ch.isalnum() or ch in "-&" for ch in s)
         ]
         if len(syms) > 50:
             print(f"Loaded {len(syms)} F&O symbols from NSE")
             return fix_symbols(scanner_symbol_universe(syms))
+        print(f"NSE se sirf {len(syms)} symbols mile -- built-in list use kar raha hoon.")
     except Exception as e:
         print(f"NSE fetch failed: {e}. Using built-in list.")
 
