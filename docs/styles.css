@@ -436,3 +436,7 @@ body[data-detail="1"] .brand { display: none; }
 
 .seg.small { height: 30px; margin-top: 8px; }
 .seg.small button { font-size: 10px; }
+
+.badge-sq.abs { background: #1D1B2B; color: #B79CFF; }
+
+.card-note.lead { color: var(--text2); font-weight: 600; }

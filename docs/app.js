@@ -63,10 +63,41 @@
     });
   }
 
+  // Har timeframe ke itne sabse patli band wale apne channel mein aate hain.
+  var ABS_TOP = 10;
+
+  // Absolute channels app khud banata hai -- scanner inka alert nahi
+  // bhejta. Universe mein har stock x TF ka row hota hai, usi se har TF ke
+  // sabse patli band wale nikal kar alert jaisa row ban jaata hai, taaki ye
+  // Feed, Channels aur Filter -- teeno mein apne aap aa jayein.
+  function absoluteRows(universe) {
+    var out = [];
+    [['rsiw', 'RSI_Band_Absolute'], ['prw', 'Price_Band_Absolute']].forEach(function (pair) {
+      var field = pair[0], setup = pair[1];
+      var byTf = {};
+      universe.forEach(function (r) {
+        if (r[field] == null) return;
+        (byTf[r.tf] = byTf[r.tf] || []).push(r);
+      });
+      Object.keys(byTf).forEach(function (tf) {
+        byTf[tf].slice().sort(function (a, b) { return a[field] - b[field]; })
+          .slice(0, ABS_TOP).forEach(function (r) {
+            out.push({
+              setup: setup, tf: r.tf, sym: r.sym, side: '',
+              close: r.close, sq: r.sq, rsibb: r.rsibb,
+              sqz_ago: field === 'prw' ? r.psqz_ago : r.sqz_ago,
+              entry: null, ts: r.ts
+            });
+          });
+      });
+    });
+    return out;
+  }
+
   function adopt(feed) {
     st.feed = feed;
-    st.allAlerts = toObjects(feed.alerts);
     st.universe = toObjects(feed.universe);
+    st.allAlerts = toObjects(feed.alerts).concat(absoluteRows(st.universe));
 
     var seen = {};
     st.universe.forEach(function (r) { seen[r.tf] = true; });

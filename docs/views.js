@@ -22,8 +22,18 @@
     { id: 'New_HA_Squeeze_Setup', name: 'Squeeze se breakout', kind: 'ha',
       desc: 'HA close band ke bahar, squeeze pichhli 3 candle mein tha' },
     { id: 'Mid_BB_Reversal_Setup', name: 'Middle BB palta', kind: 'mid',
-      desc: 'Strong HA candle middle BB cross karke pichhli 2 candle ke high/low se aage' }
+      desc: 'Strong HA candle middle BB cross karke pichhli 2 candle ke high/low se aage' },
+    // Ye scanner ka setup nahi hai -- app khud universe se banata hai.
+    // Baaki sab channels percentage/relative par chalte hain; ye seedha
+    // band ke number par, taaki dono tarah ke natije saath-saath dikhein.
+    { id: 'RSI_Band_Absolute', name: 'RSI band sabse patli', kind: 'abs',
+      desc: 'Har timeframe ke 10 sabse patli RSI band wale -- seedha number, percentage nahi' },
+    { id: 'Price_Band_Absolute', name: 'Price band sabse patli', kind: 'abs',
+      desc: 'Har timeframe ke 10 sabse patli price band wale -- seedha %, apne low se nahi' }
   ];
+
+  // App ke apne banaye channels -- in par scanner ka alert nahi hota.
+  var APP_SETUPS = ['RSI_Band_Absolute', 'Price_Band_Absolute'];
 
   var TF_ORDER = ['5m', '15m', '30m', '45m', '1H', '75m', '90m', '2H', '150m',
     '3H', '4H', '1D', '2D', '3D', '1W', '1M', '6M'];
@@ -142,13 +152,22 @@
 
   function smallCard(a, u) {
     var sq = sqzText(a.sqz_ago);
-    // Dono paimane card par: percentage upar, band ka asli number neeche.
-    var w = u && u.rsiw != null ? 'band ' + num(u.rsiw, 1) + ' pts' : '';
+    // Dono paimane card par. Absolute channels mein number pehle, kyunki
+    // wahi unka matlab hai; baaki channels mein percentage pehle.
+    var priceCh = a.setup === 'Price_Band_Absolute';
+    var w = u == null ? ''
+      : (priceCh
+          ? (u.prw != null ? 'band ' + num(u.prw, 1) + '%' : '')
+          : (u.rsiw != null ? 'band ' + num(u.rsiw, 1) + ' pts' : ''));
+    if (APP_SETUPS.indexOf(a.setup) >= 0 && w) {
+      var t = w; w = sq || ('SQ% ' + num(a.sq, 1)); sq = t;
+    }
     return '<a class="card" href="#/stock/' + esc(a.sym) + '/' + esc(a.tf) + '">' +
       '<div class="card-top"><span class="tag">' + esc(a.tf) + '</span>' + sideTag(a.side) + '</div>' +
       '<div class="card-sym">' + esc(a.sym) + '</div>' +
       '<div class="card-price num">' + num(a.close) + '</div>' +
-      '<div class="card-note">' + esc(sq || ('SQ% ' + num(a.sq, 1))) + '</div>' +
+      '<div class="card-note' + (APP_SETUPS.indexOf(a.setup) >= 0 ? ' lead' : '') + '">' +
+        esc(sq || ('SQ% ' + num(a.sq, 1))) + '</div>' +
       (w ? '<div class="card-note num">' + esc(w) + '</div>' : '') +
     '</a>';
   }
@@ -177,7 +196,10 @@
         'Filter hatao</button></div>';
     }
 
-    var sorted = alerts.slice().sort(function (a, b) {
+    // Hero 'aaj ka top setup' kehta hai, isliye wahan sirf scanner ke asli
+    // alerts aate hain -- app ke apne banaye channels nahi.
+    var real = alerts.filter(function (a) { return APP_SETUPS.indexOf(a.setup) < 0; });
+    var sorted = (real.length ? real : alerts).slice().sort(function (a, b) {
       var sa = a.sqz_ago >= 999 ? 500 : a.sqz_ago;
       var sb = b.sqz_ago >= 999 ? 500 : b.sqz_ago;
       if (sa !== sb) return sa - sb;
@@ -187,7 +209,15 @@
     var U = st.uidx || {};
     var uOf = function (a) { return U[a.sym + '|' + a.tf]; };
     var html = heroCard(sorted[0], uOf(sorted[0]));
-    var rest = sorted.slice(1);
+    var heroKey = sorted[0].setup + '|' + sorted[0].tf + '|' + sorted[0].sym;
+    var rest = alerts.filter(function (a) {
+      return (a.setup + '|' + a.tf + '|' + a.sym) !== heroKey;
+    }).sort(function (a, b) {
+      var sa = a.sqz_ago >= 999 ? 500 : a.sqz_ago;
+      var sb = b.sqz_ago >= 999 ? 500 : b.sqz_ago;
+      if (sa !== sb) return sa - sb;
+      return tfRank(b.tf) - tfRank(a.tf);
+    });
 
     SETUPS.forEach(function (s) {
       var mine = rest.filter(function (a) { return a.setup === s.id; });
@@ -226,7 +256,9 @@
       { title: 'BAND TODNA', ids: ['RSI_BB_Cross_Setup'], cls: 'eod' },
       { title: 'GEM AUR TIGHT BANDS', ids: ['Gem_Setup_Intraday', 'Gem_Setup_HigherTF',
         'Price_BB_Squeeze', 'RSI_BB_Squeeze', 'Both_Squeeze', 'New_HA_Squeeze_Setup'], cls: '' },
-      { title: 'PALATNA', ids: ['Mid_BB_Reversal_Setup'], cls: 'mid' }
+      { title: 'PALATNA', ids: ['Mid_BB_Reversal_Setup'], cls: 'mid' },
+      { title: 'SEEDHA NUMBER · APP KA APNA', cls: 'abs',
+        ids: ['RSI_Band_Absolute', 'Price_Band_Absolute'] }
     ];
 
     groups.forEach(function (g) {
@@ -256,6 +288,7 @@
   // Yahan saanjhe helper aur Feed/Channels; baaki screens.js mein.
   global.V = {
     SETUPS: SETUPS,
+    APP_SETUPS: APP_SETUPS,
     TF_ORDER: TF_ORDER,
     INTRADAY: INTRADAY,
     HIGHER: HIGHER,
