@@ -141,6 +141,20 @@ def _universe_row(row: Dict[str, Any]) -> List[Any]:
     return [row.get(col) for col in UNIVERSE_COLS]
 
 
+def _dedupe(rows: List[List[Any]], cols: Sequence[str], key_cols: Sequence[str]) -> List[List[Any]]:
+    """Ek key ka ek hi row rakho -- baad wala jeetta hai.
+
+    1D/2D/3D dono scans se guzarte hain (run_scanner aur scan_mid_bb_setup),
+    to bina iske har stock un timeframes par do baar dikhta tha.
+    """
+    index = [cols.index(c) for c in key_cols]
+    out: Dict[tuple, List[Any]] = {}
+    for row in rows:
+        key = tuple(row[i] if i < len(row) else None for i in index)
+        out[key] = row
+    return list(out.values())
+
+
 def _load_existing() -> Dict[str, Any]:
     if not os.path.exists(FEED_PATH):
         return {}
@@ -221,9 +235,11 @@ def write_feed(
         for _, row in df.iterrows():
             fresh_alerts.append(_alert_row(setup, row.to_dict()))
 
-    alerts = _kept_rows(
-        old, "alerts", ALERT_COLS, refreshed_alerts, ("setup", "tf")
-    ) + fresh_alerts
+    alerts = _dedupe(
+        _kept_rows(old, "alerts", ALERT_COLS, refreshed_alerts, ("setup", "tf")) + fresh_alerts,
+        ALERT_COLS,
+        ("setup", "tf", "sym"),
+    )
 
     # 2) Universe -- sirf un TFs ke rows badalte hain jo is run mein chale.
     #    Mid-BB scan bhi universe rows deta hai (1W/1M/6M wahin se aate
@@ -232,9 +248,11 @@ def write_feed(
     fresh_universe = [_universe_row(row) for row in universe_rows]
     universe_tfs = list(dict.fromkeys(list(scanned_sets["due"]) + list(scanned_sets["mid_bb"])))
     refreshed_tfs = [(tf,) for tf in universe_tfs]
-    universe = _kept_rows(
-        old, "universe", UNIVERSE_COLS, refreshed_tfs, ("tf",)
-    ) + fresh_universe
+    universe = _dedupe(
+        _kept_rows(old, "universe", UNIVERSE_COLS, refreshed_tfs, ("tf",)) + fresh_universe,
+        UNIVERSE_COLS,
+        ("sym", "tf"),
+    )
 
     # 3) Har TF ka apna last-updated, taaki app purane TF ko grey dikha sake.
     tf_updated = dict(old.get("tf_updated") or {})
