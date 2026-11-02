@@ -402,12 +402,16 @@ SYMBOL_RENAMES = {
     "FINNIFTY": None,
     "IDFC": None,
     "GMRINFRA": "GMRAIRPORT",
-    "LTFH": "LTFINANCE",
-    "LTF": "LTFINANCE",
+    # NSE ne LTFINANCE ko LTF kiya tha, ulta nahi. Rename ulta likha hua
+    # tha aur LTFINANCE neeche REMOVE_BAD_YF mein bhi tha, to L&T Finance
+    # har scan se gayab ho jaata tha. LTFINANCE.NS par yfinance ke paas
+    # kuch nahi hai; LTF.NS par poora data hai.
+    "LTFH": "LTF",
+    "LTFINANCE": "LTF",
     "PEL": "POONAWALLA",
     "ZOMATO": "ETERNAL",
 }
-REMOVE_BAD_YF = {"ISEC", "LTFINANCE", "LTIM", "TATAMOTORS"}
+REMOVE_BAD_YF = {"ISEC", "LTIM", "TATAMOTORS"}
 
 ALWAYS_INCLUDE_SYMBOLS = [
     "DMART",
