@@ -17,11 +17,29 @@ on:
     # Code mein bhi hard guard hai: 9:15 AM se pehle ya 4:00 PM ke baad
     # scanner turant exit ho jaata hai. Zaroori isliye ki GitHub ka cron
     # ghanton late fire hota hai -- is repo ke runs 23:38 IST tak chale hain.
-  workflow_dispatch:   # lets you trigger it manually from the Actions tab to test
+  # Manually Actions tab se, aur app ke "Scan abhi chalao" button se.
+  # force=true aane par scanner time guard chhod kar saare TF scan karta hai.
+  # Baahar ka scheduler koi input nahi bhejta, to uske runs par force false
+  # rehta hai aur purana vyavhaar waisa hi chalta hai.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Time guard ignore karke abhi poora scan chalao'
+        type: boolean
+        default: false
+
+# Do run ek saath chalein to dono docs/feed.json push karne ki koshish
+# karenge. Isliye runs queue mein chalte hain -- cancel nahi hote, bas ek
+# ke baad ek. Jo run late pahunchega wo khud time-guard se nikal jayega.
+concurrency:
+  group: gem-scanner
+  cancel-in-progress: false
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # app ki feed (docs/feed.json) commit karne ke liye
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -37,6 +55,7 @@ jobs:
       - name: Run scanner
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          FORCE_SCAN: ${{ inputs.force }}
           APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_5M: ${{ secrets.DISCORD_WEBHOOK_5M }}
@@ -59,3 +78,29 @@ jobs:
           DISCORD_WEBHOOK_RSICROSS_INTRADAY: ${{ secrets.DISCORD_WEBHOOK_RSICROSS_INTRADAY }}
           DISCORD_WEBHOOK_RSICROSS_HIGHER: ${{ secrets.DISCORD_WEBHOOK_RSICROSS_HIGHER }}
         run: python gem_scanner.py
+
+      - name: App feed commit karo
+        if: always()
+        run: |
+          if [ ! -f docs/feed.json ]; then
+            echo "Feed nahi bani -- is run mein koi timeframe due nahi tha."
+            exit 0
+          fi
+          git config user.name "scan-by-akshay-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/feed.json
+          if git diff --cached --quiet; then
+            echo "Feed waisi hi hai, commit karne ki zaroorat nahi."
+            exit 0
+          fi
+          git commit -m "Feed: $(TZ=Asia/Kolkata date '+%d %b %Y, %I:%M %p IST')"
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "Feed push ho gayi (koshish $attempt)."
+              exit 0
+            fi
+            echo "Push fail -- origin se rebase karke dobara (koshish $attempt)."
+            git pull --rebase --autostash origin main || true
+          done
+          echo "Feed push 3 koshish mein nahi hui."
+          exit 1

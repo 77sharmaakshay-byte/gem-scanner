@@ -38,6 +38,7 @@ except Exception:
     display = None
 
 from sheets_export_webapp import export_to_google_sheet, export_status_only
+from feed_export import write_feed
 
 warnings.filterwarnings("ignore")
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
@@ -229,7 +230,11 @@ TIMEFRAMES: Dict[str, Dict[str, Any]] = {
     "2H": {"interval": "15m", "scan_period": "60d", "resample": "120min", "tf_days": 2 / 24},
     "150m": {"interval": "15m", "scan_period": "60d", "resample": "150min", "tf_days": 150 / 1440},
     "3H": {"interval": "15m", "scan_period": "60d", "resample": "180min", "tf_days": 3 / 24},
-    "4H": {"interval": "15m", "scan_period": "60d", "resample": "240min", "tf_days": 4 / 24},
+    # 4H 1h data se banta hai, 15m se nahi. yfinance 15m sirf 60 din deta
+    # hai, jisse 4H ki sirf ~59 candles banti hain -- MIN_BARS_SCAN (80) se
+    # kam, to har scan 4H ko chupchap chhod deta tha aur 4H channel kabhi
+    # chala hi nahi. 1h par 730 din milte hain = ~1450 candles.
+    "4H": {"interval": "1h", "scan_period": "730d", "resample": "240min", "tf_days": 4 / 24},
     "1D": {"interval": "1d", "scan_period": "max", "resample": None, "tf_days": 1},
     "2D": {"interval": "1d", "scan_period": "max", "resample": "2D", "tf_days": 2},
     "3D": {"interval": "1d", "scan_period": "max", "resample": "3D", "tf_days": 3},
@@ -988,6 +993,16 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
 
     price_basis, price_upper, price_lower = calc_bb(close, PRICE_BB_LENGTH, PRICE_BB_MULT)
     price_width_pct = ((price_upper - price_lower) / price_basis.replace(0, np.nan)) * 100
+    # Price BB ke liye wahi funnel paimana jo RSI ke liye neeche banta hai:
+    # width apne pichhle 20 candles ke low se kitne guna.
+    price_width_localmin = price_width_pct.rolling(
+        RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10
+    ).min()
+    price_width_ratio = price_width_pct / price_width_localmin.replace(0, np.nan)
+    # Price band ka apna "kitni candle pehle squeeze tha" -- RSI wale se alag,
+    # warna app ke Price BB tab par RSI ka number dikhta hai.
+    price_squeeze_base = price_width_ratio.le(RSI_CROSS_SQUEEZE_LOCALMIN_TOL).fillna(False)
+    price_squeeze_bars_ago = _bars_since_true(price_squeeze_base)
     tr = calc_true_range(df)
     kc_basis = calc_ema(close, PRICE_BB_LENGTH)
     kc_atr = tr.rolling(PRICE_BB_LENGTH, min_periods=PRICE_BB_LENGTH).mean()
@@ -1052,6 +1067,15 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     rsi = calc_rsi(close, RSI_LENGTH)
     rsi_basis, rsi_upper, rsi_lower = calc_bb(rsi, RSI_BB_LENGTH, RSI_BB_MULT)
     rsi_width = rsi_upper - rsi_lower
+    # App ke squeeze funnel ke liye: RSI band ki width apne pichhle
+    # RSI_CROSS_SQUEEZE_LOCALMIN_BARS candles ke sabse chhote se kitne guna
+    # hai. 1.00 = band apne local low par, yaani sabse tight. Yahi wahi
+    # paimana hai jispar RSI_CROSS_SQUEEZE_LOCALMIN_TOL kaam karta hai, to
+    # app ka slider aur scanner ka filter ek hi number hilate hain.
+    rsi_width_localmin = rsi_width.rolling(
+        RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10
+    ).min()
+    rsi_width_ratio = rsi_width / rsi_width_localmin.replace(0, np.nan)
     rsi_change = rsi.diff().abs()
     rsi_atr = rsi_change.rolling(RSI_BB_LENGTH, min_periods=RSI_BB_LENGTH).mean() * 1.5
     rsi_kc_upper = rsi_basis + rsi_atr
@@ -1403,6 +1427,8 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["rsi_bb_upper"] = rsi_upper
     out["rsi_bb_lower"] = rsi_lower
     out["rsi_width"] = rsi_width
+    out["rsi_width_localmin"] = rsi_width_localmin
+    out["rsi_width_ratio"] = rsi_width_ratio
     out["rsi_contraction"] = rsi_contraction
     out["rsi_squeeze_now"] = rsi_squeeze_now.astype(int)
     out["rsi_squeeze_fire"] = rsi_squeeze_fire.astype(int)
@@ -1424,6 +1450,9 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["price_bb_upper"] = price_upper
     out["price_bb_lower"] = price_lower
     out["price_width_pct"] = price_width_pct
+    out["price_width_localmin"] = price_width_localmin
+    out["price_width_ratio"] = price_width_ratio
+    out["price_squeeze_bars_ago"] = price_squeeze_bars_ago
     out["price_contraction"] = price_contraction
     out["sq_pct"] = display_contraction
     out["sq_count"] = display_sq_count
@@ -1694,6 +1723,41 @@ def visible_squeeze_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [row for row in rows if row_meets_visible_squeeze_floor(row)]
 
 
+# Har scan run ke baad app ki feed yahan se banti hai: ek row per
+# (stock, timeframe), chahe us par koi alert bana ho ya nahi.
+ALL_SCAN_ROWS: List[Dict[str, Any]] = []
+
+
+def feed_universe_row(sym: str, tf: str, last: pd.Series) -> Dict[str, Any]:
+    """App ke squeeze funnel ke liye ek chhota row.
+
+    row_common ko jaan-boojh kar chhoda hai -- usmein 60+ columns hain jo
+    Excel aur Google Sheet mein jaate hain, aur feed har run par poora
+    universe likhti hai, to usko halka rakhna zaroori hai.
+    """
+    return {
+        "sym": sym,
+        "tf": tf,
+        "ts": _to_local_naive(last.name).isoformat(timespec="minutes"),
+        "close": _round_or_none(last.get("Close"), 2),
+        "rsi": _round_or_none(last.get("rsi"), 1),
+        "rsiw": _round_or_none(last.get("rsi_width"), 2),
+        "rratio": _round_or_none(last.get("rsi_width_ratio"), 3),
+        "prw": _round_or_none(last.get("price_width_pct"), 2),
+        "pratio": _round_or_none(last.get("price_width_ratio"), 3),
+        "sq": _round_or_none(last.get("sq_pct"), 1),
+        "rsibb": _round_or_none(last.get("rsi_contraction"), 1),
+        "sqz_ago": int(last.get("rsi_squeeze_bars_ago", 999)),
+        "psqz_ago": int(last.get("price_squeeze_bars_ago", 999)),
+        "rsq": int(last.get("rsi_squeeze_now", 0)),
+        "psq": int(last.get("price_squeeze_now", 0)),
+        "hab": int(last.get("ha_above_bb", 0)),
+        "hbl": int(last.get("ha_below_bb", 0)),
+        "mbb_b": int(last.get("mid_bb_buy_setup", 0)),
+        "mbb_s": int(last.get("mid_bb_sell_setup", 0)),
+    }
+
+
 def run_scanner(
     syms_nse: List[str],
     syms_yf: List[str],
@@ -1713,6 +1777,12 @@ def run_scanner(
     print(f"Visible rows require SQ% or RSI-BB% >= {MIN_VISIBLE_SQUEEZE:.0f}")
     print("Sections: Gem Intraday | Gem Higher TF | Price-BB | RSI-BB | Both | HA strong setup | New HA Squeeze Setup")
     print(f"Freshness: CHECK={CHECK_DATA_FRESHNESS} | REJECT_STALE_DATA={REJECT_STALE_DATA}")
+
+    # App ka squeeze funnel har stock ki width chahta hai, sirf un stocks ki
+    # nahi jinka alert bana. Isliye yahan har (stock, TF) ka ek chhota row
+    # jama hota hai. Ye list sirf feed_export padhta hai -- outputs mein
+    # daalne se Discord ise ek naya section samajh kar post karne lagta.
+    ALL_SCAN_ROWS.clear()
 
     gem_intraday_rows: List[Dict[str, Any]] = []
     gem_higher_rows: List[Dict[str, Any]] = []
@@ -1753,6 +1823,7 @@ def run_scanner(
                     common = row_common(nse, tf, sig, last)
                     common["Status"] = bar_status(sig, tf)
                     common.update(historical_gem_squeeze_moves(sig, tf))
+                    ALL_SCAN_ROWS.append(feed_universe_row(nse, tf, last))
 
                     price_ready = bool(last.get("price_squeeze_ready", 0))
                     rsi_ready = bool(last.get("rsi_squeeze_ready", 0))
@@ -1908,6 +1979,9 @@ def scan_mid_bb_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFrame:
                         continue
 
                     last = sig.iloc[-1]
+                    # 1W/1M/6M sirf isi scan se guzarte hain, to app ke
+                    # funnel ka weekly/monthly data yahin se aata hai.
+                    ALL_SCAN_ROWS.append(feed_universe_row(nse, tf, last))
                     if bool(last.get("mid_bb_buy_setup", 0)) or bool(last.get("mid_bb_sell_setup", 0)):
                         side = "BUY" if bool(last.get("mid_bb_buy_setup", 0)) else "SELL"
                         common = row_common(nse, tf, sig, last)
@@ -1950,13 +2024,22 @@ def main() -> None:
     now = _local_now_naive()
     scanned_str = now.strftime("%d %b %Y, %I:%M %p")
 
-    if not in_scan_window() and not is_eod_now():
+    # App ka "Scan abhi chalao" button workflow_dispatch ko force=true bhejta
+    # hai. Baahar ka scheduler bhi workflow_dispatch maarta hai par koi input
+    # nahi bhejta, to sirf is flag se pata chalta hai ki insaan ne jaan-boojh
+    # kar chalaya hai. Aise run mein time guard nahi lagta aur saare TF scan
+    # hote hain -- data purana hoga to freshness check khud chhod dega.
+    force_scan = os.environ.get("FORCE_SCAN", "").strip().lower() in ("1", "true", "yes")
+    if force_scan:
+        print(f"FORCE SCAN: {now.strftime('%I:%M %p')} IST -- time guard off, saare TF.")
+
+    if not force_scan and not in_scan_window() and not is_eod_now():
         print(
             f"Abhi {now.strftime('%I:%M %p')} IST hai -- na scan window "
             f"(9:15 AM - 4:00 PM) mein, na EOD window (3:35 PM ke baad). Kuch nahi karna."
         )
         return
-    if is_late_eod():
+    if not force_scan and is_late_eod():
         print(
             f"Abhi {now.strftime('%I:%M %p')} IST -- LATE EOD run. "
             f"Sirf higher timeframes + Mid-BB; intraday skip."
@@ -2002,6 +2085,13 @@ def main() -> None:
                 due_tfs = list(dict.fromkeys(INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES))
                 rsi_cross_due_tfs = list(RSI_CROSS_TIMEFRAMES)
 
+        if force_scan:
+            # Jaan-boojh kar chalaya gaya run: sab dekho, boundary ka
+            # intezaar mat karo.
+            due_tfs = list(dict.fromkeys(INTRADAY_TIMEFRAMES + HIGHER_TIMEFRAMES))
+            rsi_cross_due_tfs = list(RSI_CROSS_TIMEFRAMES)
+            mid_bb_due_tfs = list(NEW_PATTERN_TIMEFRAMES)
+
         print(f"Timeframes due this run: {', '.join(due_tfs) if due_tfs else 'NONE'}")
         print(f"Mid-BB reversal due this run: {', '.join(mid_bb_due_tfs) if mid_bb_due_tfs else 'NONE'}")
         print(f"RSI-BB cross due this run: {', '.join(rsi_cross_due_tfs) if rsi_cross_due_tfs else 'NONE'}")
@@ -2039,6 +2129,15 @@ def main() -> None:
 
             export_excel(outputs)
             export_to_google_sheet(outputs, scanned_str, due_tfs, mid_bb_due_tfs, rsi_cross_due_tfs)
+            write_feed(
+                outputs,
+                ALL_SCAN_ROWS,
+                scanned_str,
+                due_tfs,
+                mid_bb_due_tfs,
+                rsi_cross_due_tfs,
+                late_eod=is_late_eod(),
+            )
 
     print("\nDone.")
 
