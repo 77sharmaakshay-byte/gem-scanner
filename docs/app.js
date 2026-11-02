@@ -1,7 +1,7 @@
 /* Scan by Akshay -- data, routing, aur on-demand scan.
    Feed ek static JSON hai jo scanner har run par commit karta hai; filter
    sab kuch phone ke andar hota hai, to koi server nahi chahiye. */
-(function () {
+(function (global) {
   'use strict';
 
   var REPO = '77sharmaakshay-byte/gem-scanner';
@@ -30,6 +30,9 @@
   var app = document.getElementById('app');
   var stampEl = document.getElementById('stamp');
   var refreshBtn = document.getElementById('refresh');
+  var backBtn = document.getElementById('back');
+  var ptrEl = document.getElementById('ptr');
+  var lastKey = '';
 
   /* ---------------- storage ---------------- */
 
@@ -107,7 +110,18 @@
       stampEl.textContent = st.loadError;
       return;
     }
-    stampEl.textContent = st.feed && st.feed.scanned ? st.feed.scanned : 'feed khali';
+    if (!st.feed || !st.feed.scanned) { stampEl.textContent = 'feed khali'; return; }
+    stampEl.innerHTML = V.esc(st.feed.scanned) + ago(st.feed.updated_utc);
+  }
+
+  // "12:31 PM · 8m" -- data kitna purana hai ye ek nazar mein dikhe.
+  function ago(utc) {
+    if (!utc) return '';
+    var mins = Math.round((Date.now() - new Date(utc).getTime()) / 60000);
+    if (isNaN(mins) || mins < 0) return '';
+    var txt = mins < 60 ? mins + 'm' : Math.round(mins / 60) + 'h';
+    var old = mins > 40 && Shell.marketHours();
+    return ' <span class="age' + (old ? ' old' : '') + '">· ' + txt + '</span>';
   }
 
   function load(force) {
@@ -289,7 +303,7 @@
         ? '<p class="empty">Abhi tak koi scan nahi hua.<br>' +
           'Market hours mein har 15 minute par run hota hai, aur 3:35 PM ke ' +
           'EOD run ke baad saare timeframes bhar jaate hain.</p>'
-        : '<p class="empty">Feed load ho rahi hai…</p>';
+        : '<div class="skel"><div class="s1"></div><div class="s2"></div><div class="s3"></div></div>';
       return;
     }
 
@@ -301,8 +315,27 @@
     else if (page === 'stock') html = V.stock(st, r.parts[1] || '', r.parts[2] || '');
     else html = V.feed(st);
 
+    if (page === 'feed') html = Shell.hintHTML() + html;
+
+    // Wahi screen dobara bani (feed refresh hui, slider badla) -- to scroll
+    // chhedo mat aur animation bhi mat chalao, warna padhte-padhte jhatka
+    // lagta hai. Screen badli tabhi upar/yaad wali jagah par jao.
+    var key = r.parts.join('/');
+    var same = key === lastKey;
+    var keepY = global.scrollY;
+
     app.innerHTML = html;
-    window.scrollTo(0, 0);
+    document.body.setAttribute('data-detail', page === 'stock' ? '1' : '0');
+
+    if (same) {
+      global.scrollTo(0, keepY);
+    } else {
+      Shell.restore(key, false);
+      app.classList.remove('in');
+      void app.offsetWidth;
+      app.classList.add('in');
+    }
+    lastKey = key;
 
     // Chuna hua TF chip strip se bahar ho sakta hai -- use dikhao.
     var picked = app.querySelector('.chips.scroll .chip[aria-pressed="true"]');
@@ -344,6 +377,9 @@
     if (!el) return;
     var act = el.getAttribute('data-act');
     var val = el.getAttribute('data-v');
+    Shell.haptic();
+
+    if (act === 'hint-off') { Shell.hintOff(); render(); return; }
 
     if (act === 'sq-tf') { st.sq.tf = val; writeJSON(LS_SQ, st.sq); render(); }
     else if (act === 'sq-band') { st.sq.band = val; writeJSON(LS_SQ, st.sq); render(); }
@@ -397,8 +433,22 @@
     patchFunnel();
   });
 
-  refreshBtn.addEventListener('click', function () { load(true); });
-  window.addEventListener('hashchange', render);
+  refreshBtn.addEventListener('click', function () { Shell.haptic(); load(true); });
+  backBtn.addEventListener('click', function () {
+    Shell.haptic();
+    if (history.length > 1) history.back();
+    else location.hash = '#/feed';
+  });
+  window.addEventListener('hashchange', function () {
+    if (lastKey) Shell.remember(lastKey);
+    render();
+  });
+
+  // Link par ungli rakhte hi scroll yaad -- taaki wapas aakar wahin milein.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest ? ev.target.closest('a[href^="#/"]') : null;
+    if (a && lastKey) Shell.remember(lastKey);
+  }, true);
 
   /* ---------------- boot ---------------- */
 
@@ -425,6 +475,9 @@
   if (cached) { adopt(cached); setStamp(); render(); }
   load(false);
 
+  Shell.init(ptrEl, function () { return load(true); });
+  setInterval(setStamp, 60000);
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function (err) {
@@ -432,4 +485,4 @@
       });
     });
   }
-})();
+})(window);

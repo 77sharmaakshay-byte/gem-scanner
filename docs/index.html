@@ -15,11 +15,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
 <header class="topbar">
+  <button class="back" id="back" type="button" aria-label="Wapas">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M13.5 4.5 7 11l6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
   <a class="brand" href="#/feed">
     <span class="brand-a">Scan</span><span class="brand-b">by Akshay</span>
   </a>
@@ -31,8 +34,12 @@
   </div>
 </header>
 
+<div class="ptr" id="ptr" aria-hidden="true">
+  <i><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.7M13.4 2.6v2.9h-2.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i>
+</div>
+
 <main id="app" aria-live="polite">
-  <p class="empty">Feed load ho rahi hai…</p>
+  <div class="skel"><div class="s1"></div><div class="s2"></div><div class="s3"></div></div>
 </main>
 
 <nav class="tabbar" aria-label="Main">
@@ -58,7 +65,8 @@
   </a>
 </nav>
 
-<script src="views.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="shell.js?v=5"></script>
+<script src="views.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
