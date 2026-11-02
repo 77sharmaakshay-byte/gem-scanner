@@ -357,6 +357,22 @@ def compute_next_scan_time(now: pd.Timestamp) -> Optional[pd.Timestamp]:
     return nxt
 
 
+# RSI par Keltner channel ka multiplier.
+#
+# Price wali squeeze TRUE RANGE (high-low) se banti hai, jo shaant market
+# mein 20-bar stdev se kaafi badi rehti hai -- isliye wo 26% candles par
+# lagti hai. RSI ke paas high/low hai hi nahi, uska "range" sirf ek bar ka
+# |badlav| hai, jo apne hi 20-bar stdev se aadhe se bhi kam hota hai.
+#
+# 1.5 ke saath ye shart 98,837 bars (10 stock x 1D/3D/1W) mein sirf 0.04%
+# candles par lagi -- yaani field marti padi thi, hamesha 0. Usi sample par
+# BB half-width / mean|dRSI| ka bantwara dekh kar 3.0 chuna hai, jisse ye
+# 25.3% candles par lagti hai -- price wali squeeze ke barabar.
+#
+# Ye sirf app ko sach dikhane ke liye hai. Purani 1.5 wali shart
+# jahan thi wahin hai, taaki Gem/cross alerts jaise the waise rahein.
+RSI_KC_MULT = 3.0
+
 RSI_CROSS_INTRADAY_TFS = ["30m", "45m", "1H", "2H", "75m", "90m", "150m", "3H", "4H"]
 RSI_CROSS_HIGHER_TFS = ["1D", "2D", "3D", "1W", "1M"]
 RSI_CROSS_TIMEFRAMES = RSI_CROSS_INTRADAY_TFS + RSI_CROSS_HIGHER_TFS
@@ -1068,6 +1084,16 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     rsi_kc_upper = rsi_basis + rsi_atr
     rsi_kc_lower = rsi_basis - rsi_atr
     rsi_squeeze_now = (rsi_lower.gt(rsi_kc_lower) & rsi_upper.lt(rsi_kc_upper)).fillna(False)
+
+    # App ko dikhane wali asli squeeze. Upar wali 1.5 wali shart RSI par
+    # kabhi lagti hi nahi (dekho RSI_KC_MULT ka note), isliye alag se
+    # calibrated multiplier par nikalte hain. Ise jaan-boojh kar kisi alert
+    # ki shart mein nahi joda -- warna Gem setups apne aap dhile pad jaate
+    # hain aur aapke tuned thresholds ka matlab badal jaata hai.
+    rsi_kc_wide = rsi_change.rolling(RSI_BB_LENGTH, min_periods=RSI_BB_LENGTH).mean() * RSI_KC_MULT
+    rsi_kc_squeeze = (
+        rsi_lower.gt(rsi_basis - rsi_kc_wide) & rsi_upper.lt(rsi_basis + rsi_kc_wide)
+    ).fillna(False)
     rsi_squeeze_fire = (rsi_squeeze_now.shift(1).fillna(False) & ~rsi_squeeze_now).fillna(False)
     rsi_recent_fire = _recent_true(rsi_squeeze_fire, 2)
     rsi_width_high = rsi_width.rolling(30, min_periods=5).max()
@@ -1418,6 +1444,7 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["rsi_width_ratio"] = rsi_width_ratio
     out["rsi_contraction"] = rsi_contraction
     out["rsi_squeeze_now"] = rsi_squeeze_now.astype(int)
+    out["rsi_kc_squeeze"] = rsi_kc_squeeze.astype(int)
     out["rsi_squeeze_fire"] = rsi_squeeze_fire.astype(int)
     out["rsi_recent_fire"] = rsi_recent_fire.astype(int)
     out["rsi_squeeze_ready"] = rsi_squeeze_ready.astype(int)
@@ -1736,7 +1763,7 @@ def feed_universe_row(sym: str, tf: str, last: pd.Series) -> Dict[str, Any]:
         "rsibb": _round_or_none(last.get("rsi_contraction"), 1),
         "sqz_ago": int(last.get("rsi_squeeze_bars_ago", 999)),
         "psqz_ago": int(last.get("price_squeeze_bars_ago", 999)),
-        "rsq": int(last.get("rsi_squeeze_now", 0)),
+        "rsq": int(last.get("rsi_kc_squeeze", 0)),
         "psq": int(last.get("price_squeeze_now", 0)),
         "hab": int(last.get("ha_above_bb", 0)),
         "hbl": int(last.get("ha_below_bb", 0)),

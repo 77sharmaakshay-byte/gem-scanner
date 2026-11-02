@@ -46,10 +46,19 @@
     return i < 0 ? 99 : i;
   }
 
+  // Ye "squeeze" nahi hai. Ye sirf itna hai ki band ki chaudai apne 20-bar
+  // low par (ya 10% ke andar) hai -- jo har teesri-chauthi candle par ho
+  // jaata hai. Pehle isko "SQZ" likha tha, jisse lagta tha ki chart wala
+  // squeeze chal raha hai. Naam wahi rakho jo cheez hai.
   function sqzText(bars) {
     if (bars === null || bars === undefined || bars >= 999) return '';
-    if (bars <= 0) return 'SQZ abhi';
-    return bars === 1 ? 'SQZ 1 candle pehle' : 'SQZ ' + bars + ' candles pehle';
+    if (bars <= 0) return 'width 20-bar low par';
+    return bars === 1 ? 'low se 1 candle' : 'low se ' + bars + ' candle';
+  }
+
+  function sqzTag(bars) {
+    if (bars === null || bars === undefined || bars >= 999) return '';
+    return bars <= 0 ? 'LOW PAR' : 'LOW +' + bars;
   }
 
   function sideTag(side) {
@@ -62,7 +71,7 @@
 
   function heroCard(a) {
     var sell = a.side === 'SELL';
-    var sq = sqzText(a.sqz_ago);
+    var sq = sqzTag(a.sqz_ago);
     return '<a class="hero' + (sell ? ' sell' : '') + '" href="#/stock/' + esc(a.sym) + '/' + esc(a.tf) + '">' +
       '<div class="hero-top">' +
         '<span class="hero-kicker">AAJ KA TOP SETUP</span>' +
@@ -230,11 +239,15 @@
         meta = (r.mbb_b ? 'mid-BB ke upar close' : 'mid-BB ke neeche close') +
           ' · ' + num(ratio, 2) + 'x low se';
       } else {
-        meta = num(ratio, 2) + 'x apne 20-bar low se' + (ago === 0 ? ' · SQZ abhi' : '');
+        meta = num(ratio, 2) + 'x apne 20-bar low se' + (ago === 0 ? ' · low par' : '');
       }
+      // Asli squeeze (BB, Keltner ke andar) alag se -- width low par hona
+      // aur squeeze hona do alag baatein hain.
+      var real = (s.band === 'price' ? r.psq : r.rsq)
+        ? ' <span class="tag sqz">SQUEEZE</span>' : '';
       return '<a class="row" href="#/stock/' + esc(r.sym) + '/' + esc(r.tf) + '">' +
         '<span class="grow">' +
-          '<span class="name">' + esc(r.sym) + '</span>' +
+          '<span class="name">' + esc(r.sym) + real + '</span>' +
           '<span class="meta">' + esc(meta) + '</span>' +
           '<span class="bar"><i class="' + (s.view === 'open' ? 'open' : '') + '" style="width:' + pct + '%"></i></span>' +
         '</span>' +
@@ -386,9 +399,10 @@
       '</div>';
 
       var bits = [];
-      if (u.sqz_ago === 0) bits.push('RSI squeeze <b>abhi</b> chal raha hai');
-      else if (u.sqz_ago < 999) bits.push('RSI squeeze <b>' + u.sqz_ago + ' candle pehle</b> tha');
-      if (u.psq) bits.push('Price BB squeeze <b>abhi</b>');
+      if (u.sqz_ago === 0) bits.push('RSI band ki chaudai <b>apne 20-bar low par</b>');
+      else if (u.sqz_ago < 999) bits.push('RSI band chaudai low se <b>' + u.sqz_ago + ' candle</b> door');
+      if (u.rsq) bits.push('RSI par <b>asli squeeze</b> (BB, Keltner ke andar)');
+      if (u.psq) bits.push('Price par <b>asli squeeze</b> (BB, Keltner ke andar)');
       if (u.hab) bits.push('HA close upper BB ke <b>upar</b>');
       if (u.hbl) bits.push('HA close lower BB ke <b>neeche</b>');
       if (u.mbb_b) bits.push('Mid-BB ke <b>upar</b> close');
