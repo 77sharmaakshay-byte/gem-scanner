@@ -291,7 +291,13 @@
     var keepY = global.scrollY;
 
     app.innerHTML = html;
-    document.body.setAttribute('data-detail', page === 'stock' ? '1' : '0');
+    // Back chevron detail par, aur filtered feed par bhi -- wahan se
+    // Channels par wapas jaana padta hai.
+    var f = st.filter;
+    var filtered = page === 'feed' && (f.setups.length || f.tfs.length ||
+      f.side || f.maxWidth || f.maxBars !== 999);
+    document.body.setAttribute('data-detail',
+      (page === 'stock' || filtered) ? '1' : '0');
 
     if (same) {
       global.scrollTo(0, keepY);

@@ -172,6 +172,26 @@
     '</a>';
   }
 
+  // Channel mein ghusne par feed sirf usi channel ki reh jaati hai, par
+  // wapas aane ka koi raasta nahi tha -- Feed tab pehle se chuna hua hota
+  // hai aur back chevron sirf stock detail par dikhta tha. Ab upar ek
+  // patti aati hai jo batati hai kya laga hai aur ek tap mein hata deti hai.
+  function filterBar(st) {
+    var f = st.filter;
+    var on = [];
+    f.setups.forEach(function (id) { on.push(setupName(id)); });
+    if (f.tfs.length) on.push(f.tfs.join(', '));
+    if (f.side) on.push(f.side);
+    if (f.maxWidth) on.push('band ≤ ' + f.maxWidth + ' pts');
+    if (f.maxBars !== 999) on.push('squeeze ke ' + f.maxBars + ' candle andar');
+    if (!on.length) return '';
+    return '<div class="fbar">' +
+      '<span class="fbar-txt">' + esc(on.join(' · ')) + '</span>' +
+      '<button class="fbar-x" type="button" data-act="f-reset">' +
+        'Saare dikhao</button>' +
+    '</div>';
+  }
+
   function viewFeed(st) {
     var alerts = st.alerts;
     if (!alerts.length) {
@@ -188,10 +208,9 @@
         return '<p class="empty">Feed mein abhi koi alert nahi.<br>' +
           'Agle scan ka intezaar karo.</p>';
       }
-      return '<p class="empty">Is filter par koi alert nahi.<br>' +
+      return filterBar(st) +
+        '<p class="empty">Is filter par koi alert nahi.<br>' +
         'Poori feed mein <b>' + st.allAlerts.length + '</b> alerts hain.</p>' +
-        '<div class="note" style="text-align:center">Laga hua filter:<br><b>' +
-        esc(on.join(' · ')) + '</b></div>' +
         '<div class="btnrow"><button class="btn wide" type="button" data-act="f-reset">' +
         'Filter hatao</button></div>';
     }
@@ -208,7 +227,7 @@
 
     var U = st.uidx || {};
     var uOf = function (a) { return U[a.sym + '|' + a.tf]; };
-    var html = heroCard(sorted[0], uOf(sorted[0]));
+    var html = filterBar(st) + heroCard(sorted[0], uOf(sorted[0]));
     var heroKey = sorted[0].setup + '|' + sorted[0].tf + '|' + sorted[0].sym;
     var rest = alerts.filter(function (a) {
       return (a.setup + '|' + a.tf + '|' + a.sym) !== heroKey;
