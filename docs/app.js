@@ -476,8 +476,22 @@
   setInterval(setStamp, 60000);
 
   if ('serviceWorker' in navigator) {
+    // Naya worker control le to ek baar page reload -- warna purani screen
+    // chalti rehti hai aur user ko lagta hai update aaya hi nahi.
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (err) {
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        reg.update();
+        // App dobara saamne aate hi naya version check karo.
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update();
+        });
+      }).catch(function (err) {
         console.warn('SW register fail:', err);
       });
     });
