@@ -242,11 +242,14 @@ def write_feed(
     )
 
     # 2) Universe -- sirf un TFs ke rows badalte hain jo is run mein chale.
-    #    Mid-BB scan bhi universe rows deta hai (1W/1M/6M wahin se aate
-    #    hain), isliye uske TFs bhi refresh list mein hone chahiye -- warna
-    #    purane 1W rows rehte hain aur naye upar add ho jaate hain.
+    #    Teeno scan universe rows dete hain: mid-BB se 1W/1M/6M aate hain
+    #    aur cross se 90m/2H/4H -- wo kisi aur list mein hain hi nahi.
+    #    Isliye teeno ke TFs refresh list mein hone chahiye, warna purane
+    #    rows rehte hain aur naye unke upar add ho jaate hain.
     fresh_universe = [_universe_row(row) for row in universe_rows]
-    universe_tfs = list(dict.fromkeys(list(scanned_sets["due"]) + list(scanned_sets["mid_bb"])))
+    universe_tfs = list(dict.fromkeys(
+        list(scanned_sets["due"]) + list(scanned_sets["mid_bb"]) + list(scanned_sets["cross"])
+    ))
     refreshed_tfs = [(tf,) for tf in universe_tfs]
     universe = _dedupe(
         _kept_rows(old, "universe", UNIVERSE_COLS, refreshed_tfs, ("tf",)) + fresh_universe,

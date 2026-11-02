@@ -1914,6 +1914,12 @@ def scan_rsi_cross_setup(syms_nse: List[str], syms_yf: List[str]) -> pd.DataFram
                         continue
 
                     last = sig.iloc[-1]
+                    # App ke squeeze funnel ko har scan hue TF ka pura
+                    # universe chahiye, sirf un stocks ka nahi jinpar cross
+                    # laga. 90m/2H/4H sirf yahin scan hote hain, to inke rows
+                    # kahin aur se aate hi nahi.
+                    ALL_SCAN_ROWS.append(feed_universe_row(nse, tf, last))
+
                     is_buy = bool(last.get("rsi_bb_cross_buy", 0))
                     is_sell = bool(last.get("rsi_bb_cross_sell", 0))
                     if not (is_buy or is_sell):

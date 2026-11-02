@@ -254,6 +254,17 @@
         ' aria-pressed="' + (tf === s.tf) + '">' + esc(tf) + '</button>';
     }).join('') + '</div>';
 
+    // Funnel ko har stock ka data chahiye, sirf alert wale ka nahi. Jis TF
+    // ka scan aaj abhi tak nahi chala uska chip dikhana bekaar hai -- par
+    // bina bataye lagta hai ki wo TF app mein hai hi nahi.
+    var pending = (st.feedTfs || []).filter(function (tf) {
+      return tfs.indexOf(tf) < 0;
+    });
+    if (pending.length) {
+      html += '<div class="sub">' + esc(pending.join(' · ')) +
+        ' -- inka scan aaj abhi baaki hai, EOD ke baad yahan aa jayenge</div>';
+    }
+
     html += '<div class="seg">' + BANDS.map(function (b) {
       return '<button type="button" data-act="sq-band" data-v="' + b.id + '"' +
         ' aria-pressed="' + (b.id === s.band) + '">' + esc(b.name) + '</button>';
