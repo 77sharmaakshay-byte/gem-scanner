@@ -1,14 +1,14 @@
 /* Scan by Akshay -- service worker.
    Shell cache se chalta hai (app turant khulta hai), feed hamesha network
    se pehle try hoti hai aur fail hone par cache se aati hai. */
-var CACHE = 'sba-v7';
+var CACHE = 'sba-v8';
 var SHELL = [
   './',
   'index.html',
-  'styles.css?v=7',
-  'shell.js?v=7',
-  'app.js?v=7',
-  'views.js?v=7',
+  'styles.css?v=8',
+  'shell.js?v=8',
+  'app.js?v=8',
+  'views.js?v=8',
   'manifest.webmanifest',
   'icon.svg'
 ];

@@ -119,7 +119,15 @@ button { font-family: inherit; }
   display: inline-flex; align-items: center;
   cursor: pointer;
 }
-.chip[aria-pressed="true"] { background: var(--card2); border-color: #3A4450; color: var(--text); font-weight: 700; }
+/* Chuna hua chip saaf dikhna chahiye. Pehle ye #1C222A tha jabki na-chuna
+   #181D24 -- char point ka fark, phone par bilkul invisible. Log samajhte
+   the ki tap laga hi nahi. */
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0A0C0F;
+  font-weight: 700;
+}
 .chip.go[aria-pressed="true"] { background: var(--buy); border-color: var(--buy); color: #0A0C0F; }
 
 .seg {
@@ -136,7 +144,11 @@ button { font-family: inherit; }
   background: transparent; color: var(--mute);
   font-size: 11px; font-weight: 600; cursor: pointer;
 }
-.seg button[aria-pressed="true"] { background: #262E38; color: var(--text); font-weight: 700; }
+.seg button[aria-pressed="true"] {
+  background: #2C3644;
+  color: var(--accent);
+  font-weight: 700;
+}
 
 /* ---------- cards ---------- */
 .hero {
