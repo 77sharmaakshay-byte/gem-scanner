@@ -1015,6 +1015,10 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     price_width_pctl = (
         price_width_pct.rolling(WIDTH_PCTL_BARS, min_periods=60).rank(pct=True) * 100
     )
+    # Is stock ki apni sabse patli band pichhle 100 candle mein -- "abhi 7.99%,
+    # par yeh 4.53% tak jaa chuki hai" wala sandarbh, warna 7.99% apne aap
+    # mein tight lagta hai jabki hai nahi.
+    price_width_low = price_width_pct.rolling(WIDTH_PCTL_BARS, min_periods=60).min()
     # Price band ka apna "kitni candle pehle squeeze tha" -- RSI wale se alag,
     # warna app ke Price BB tab par RSI ka number dikhta hai.
     price_squeeze_base = price_width_ratio.le(RSI_CROSS_SQUEEZE_LOCALMIN_TOL).fillna(False)
@@ -1100,6 +1104,7 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
         .min().replace(0, np.nan)
     )
     rsi_width_pctl = rsi_width.rolling(WIDTH_PCTL_BARS, min_periods=60).rank(pct=True) * 100
+    rsi_width_low = rsi_width.rolling(WIDTH_PCTL_BARS, min_periods=60).min()
     rsi_change = rsi.diff().abs()
     rsi_atr = rsi_change.rolling(RSI_BB_LENGTH, min_periods=RSI_BB_LENGTH).mean() * 1.5
     rsi_kc_upper = rsi_basis + rsi_atr
@@ -1465,6 +1470,7 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["rsi_width_ratio"] = rsi_width_ratio
     out["rsi_width_ratio_prev"] = rsi_width_ratio_prev
     out["rsi_width_pctl"] = rsi_width_pctl
+    out["rsi_width_low"] = rsi_width_low
     out["rsi_contraction"] = rsi_contraction
     out["rsi_squeeze_now"] = rsi_squeeze_now.astype(int)
     out["rsi_kc_squeeze"] = rsi_kc_squeeze.astype(int)
@@ -1491,6 +1497,7 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["price_width_ratio"] = price_width_ratio
     out["price_width_ratio_prev"] = price_width_ratio_prev
     out["price_width_pctl"] = price_width_pctl
+    out["price_width_low"] = price_width_low
     out["price_squeeze_bars_ago"] = price_squeeze_bars_ago
     out["price_contraction"] = price_contraction
     out["sq_pct"] = display_contraction
@@ -1788,6 +1795,8 @@ def feed_universe_row(sym: str, tf: str, last: pd.Series) -> Dict[str, Any]:
         "pratio2": _round_or_none(last.get("price_width_ratio_prev"), 3),
         "rpctl": _round_or_none(last.get("rsi_width_pctl"), 1),
         "ppctl": _round_or_none(last.get("price_width_pctl"), 1),
+        "rwlo": _round_or_none(last.get("rsi_width_low"), 2),
+        "pwlo": _round_or_none(last.get("price_width_low"), 2),
         "sq": _round_or_none(last.get("sq_pct"), 1),
         "rsibb": _round_or_none(last.get("rsi_contraction"), 1),
         "sqz_ago": int(last.get("rsi_squeeze_bars_ago", 999)),

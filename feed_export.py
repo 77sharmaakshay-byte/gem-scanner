@@ -54,6 +54,8 @@ UNIVERSE_COLS = [
     "pratio2",
     "rpctl",
     "ppctl",
+    "rwlo",
+    "pwlo",
     "sq",
     "rsibb",
     "sqz_ago",

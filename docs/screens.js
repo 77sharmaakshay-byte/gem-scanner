@@ -374,7 +374,9 @@
     if (u) {
       html += '<div class="kv">' +
         '<div><div class="k">RSI</div><div class="v num">' + num(u.rsi, 1) + '</div></div>' +
-        '<div><div class="k">BAND PTS</div><div class="v num">' + num(u.rsiw) + '</div></div>' +
+        '<div><div class="k">BAND PTS</div><div class="v num">' + num(u.rsiw) +
+          (u.rwlo != null ? '<span class="lo"> / ' + num(u.rwlo) + '</span>' : '') +
+          '</div></div>' +
         '<div><div class="k">LOW SE</div><div class="v num">' +
           num(u.rratio2 != null ? u.rratio2 : u.rratio, 2) + 'x</div></div>' +
         '<div><div class="k">100 CANDLE</div><div class="v num">' +
@@ -382,7 +384,9 @@
       '</div>';
       html += '<div class="kv">' +
         '<div><div class="k">SQ%</div><div class="v num">' + num(u.sq, 1) + '</div></div>' +
-        '<div><div class="k">PRICE BB%</div><div class="v num">' + num(u.prw) + '</div></div>' +
+        '<div><div class="k">PRICE BB%</div><div class="v num">' + num(u.prw) +
+          (u.pwlo != null ? '<span class="lo"> / ' + num(u.pwlo) + '</span>' : '') +
+          '</div></div>' +
         '<div><div class="k">LOW SE</div><div class="v num">' +
           num(u.pratio2 != null ? u.pratio2 : u.pratio, 2) + 'x</div></div>' +
         '<div><div class="k">100 CANDLE</div><div class="v num">' +
@@ -390,6 +394,15 @@
       '</div>';
 
       var bits = [];
+      // "Kitni aur tight ho sakti hai" -- 7.99% apne aap mein tight lagta hai,
+      // par is stock ki apni 100-candle low 4.53% ho to baat badal jaati hai.
+      if (u.prw != null && u.pwlo != null && u.pwlo > 0) {
+        var room = u.prw / u.pwlo;
+        bits.push(room <= 1.05
+          ? 'Price band <b>100 candle ki sabse patli</b> ke aas-paas (' + num(u.prw, 2) + '%)'
+          : 'Price band <b>' + num(u.prw, 2) + '%</b> -- is stock ki 100-candle sabse patli <b>' +
+            num(u.pwlo, 2) + '%</b> hai, yaani abhi <b>' + num(room, 1) + 'x</b> chaudi');
+      }
       if (u.sqz_ago === 0) bits.push('RSI band ki chaudai <b>apne 20-bar low par</b>');
       else if (u.sqz_ago < 999) bits.push('RSI band chaudai low se <b>' + u.sqz_ago + ' candle</b> door');
       if (u.rsq) bits.push('RSI par <b>asli squeeze</b> (BB, Keltner ke andar)');

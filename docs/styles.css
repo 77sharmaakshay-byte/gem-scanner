@@ -296,6 +296,9 @@ label.field input {
 }
 .kv .k { font-size: 10px; color: var(--mute); letter-spacing: 0.5px; }
 .kv .v { font-size: 16px; font-weight: 600; margin-top: 3px; }
+/* Is stock ki apni 100-candle sabse patli band -- halke rang mein, taaki
+   abhi ka number aur uska farsh ek saath dikh jaayein. */
+.kv .v .lo { font-size: 12px; font-weight: 500; color: var(--mute); }
 
 /* ================= native app feel ================= */
 /* Browser jaisi aadatein band: text select, long-press menu, tap ka
