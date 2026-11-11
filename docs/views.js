@@ -66,10 +66,17 @@
       abs: 'rsiw', unit: '', absUnit: ' pts' }
   ];
 
+  // Tarteeb naapne se nikli hai (5 saal, 218 naam, 2.42 lakh bars -- 5 candle
+  // baad band kitni guna failti hai, base 1.064x; sabse tight 3%):
+  //   dono milakar 1.438x · seedha number 1.456x · 100 candle 1.302x · apne low se 1.126x
+  // 'best' seedha number ka 96% faida deta hai par saal mein 191 alag naam
+  // dikhata hai (seedha number sirf 155) -- rozana wahi low-vol naam nahi aate.
+  // 'rel' sabse kamzor hai, isliye sabse aakhir mein.
   var SCALES = [
-    { id: 'rel', name: 'apne low se' },
+    { id: 'best', name: 'dono taraf se tight' },
+    { id: 'abs', name: 'seedha number' },
     { id: 'pctl', name: '100 candle mein' },
-    { id: 'abs', name: 'seedha number' }
+    { id: 'rel', name: 'apne low se' }
   ];
 
   function bandOf(id) {

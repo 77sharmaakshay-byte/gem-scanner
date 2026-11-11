@@ -20,7 +20,7 @@
     feedTfs: [],
     univTfs: [],
     filter: { setups: [], tfs: [], side: '', maxBars: 999, maxWidth: 0 },
-    sq: { tf: '1D', band: 'rsi', scale: 'rel', view: 'tight', top: 25, bars: 4 },
+    sq: { tf: '1D', band: 'rsi', scale: 'best', view: 'tight', top: 25, bars: 4 },
     runNote: '',
     loadError: ''
   };
@@ -462,8 +462,12 @@
     st.sq.tf = savedSq.tf || st.sq.tf;
     // 'rsinum' alag band hua karta tha; ab wo RSI band + absolute scale hai.
     st.sq.band = savedSq.band === 'rsinum' ? 'rsi' : (savedSq.band || st.sq.band);
+    // Purane phone par 'rel' saved hai -- wahi paimana jo naapne mein sabse
+    // kamzor nikla. Use 'best' par le aao; baaki chune hue scale waise hi.
     st.sq.scale = savedSq.band === 'rsinum' ? 'abs'
-      : (savedSq.scale === 'abs' ? 'abs' : 'rel');
+      : (savedSq.scale === 'abs' || savedSq.scale === 'pctl' ||
+         savedSq.scale === 'best') ? savedSq.scale
+      : 'best';
     st.sq.view = savedSq.view === 'open' ? 'open' : 'tight';
     if (typeof savedSq.top === 'number') st.sq.top = savedSq.top;
     if (typeof savedSq.bars === 'number') st.sq.bars = savedSq.bars;

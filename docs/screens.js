@@ -59,6 +59,34 @@
     };
   }
 
+  // 'best' = dono taraf se tight. Ek taraf stock ki apni 100-candle history
+  // (feed ka pctl), doosri taraf aaj ke poore pool mein uski chaudai ka rank.
+  // Dono ka BADA wala liya jaata hai, yaani upar wahi aayega jo apni history
+  // mein bhi tight ho aur aaj baaki sab ke muqable bhi. Naapa gaya: band 5
+  // candle mein 1.438x failti hai (seedha number 1.456x) par saal mein 191
+  // alag naam deta hai, seedha number sirf 155.
+  function bestKeys(pool, band) {
+    var b = bandOf(band);
+    var wf = b.abs === 'both' ? 'rsiw' : b.abs;
+    var pf = b.pctl === 'both' ? null : b.pctl;
+    var sorted = pool.filter(function (r) { return r[wf] != null; })
+      .sort(function (x, y) { return x[wf] - y[wf]; });
+    var wrank = {};
+    sorted.forEach(function (r, i) {
+      wrank[r.sym] = sorted.length > 1 ? (i / (sorted.length - 1)) * 100 : 0;
+    });
+    return function (r) {
+      var wr = wrank[r.sym];
+      if (wr == null) return null;
+      // 'Dono' band par pctl do field mein hai -- unka bada wala lo.
+      var pc = pf ? r[pf]
+             : (r.rpctl == null || r.ppctl == null) ? null : Math.max(r.rpctl, r.ppctl);
+      // Purane feed mein pctl nahi hota -- tab akela width-rank hi chalega,
+      // screen khaali chhodne se behtar hai.
+      return pc == null ? wr : Math.max(pc, wr);
+    };
+  }
+
   // "Squeeze kitni candle pehle tha" -- har band ka apna. Price BB tab par
   // RSI ka number dikhana galat hoga, dono alag cheezein hain.
   function agoOf(row, band) {
@@ -95,12 +123,14 @@
     // hon to jiski band sach much patli hai wo upar. Isi se slider 1 par
     // le jaane par sabse tight ek naam bachta hai.
     var band = bandOf(s.band);
-    var scale = (s.scale === 'abs' || s.scale === 'pctl') ? s.scale : 'rel';
+    var scale = (s.scale === 'abs' || s.scale === 'pctl' || s.scale === 'best')
+      ? s.scale : 'rel';
     var wkey = scale === 'abs' ? (band.abs === 'both' ? 'rsiw' : band.abs)
                                : (band.abs === 'both' ? 'rsiw' : band.abs);
     var bothAbs = (band.id === 'both' && scale === 'abs') ? bothAbsKeys(pool) : null;
+    var best = scale === 'best' ? bestKeys(pool, s.band) : null;
     var keyOf = function (r) {
-      return bothAbs ? bothAbs(r) : ratioOf(r, s.band, scale);
+      return best ? best(r) : bothAbs ? bothAbs(r) : ratioOf(r, s.band, scale);
     };
 
     rows = pool.filter(function (r) {
@@ -116,7 +146,7 @@
     rows = rows.slice(0, top);
     // 'Dono' absolute ka key ek rank hai, number nahi -- uska cutoff
     // dikhana bhramit karega, isliye wahan chhod dete hain.
-    cut = (rows.length && !bothAbs) ? keyOf(rows[rows.length - 1]) : null;
+    cut = (rows.length && !bothAbs && !best) ? keyOf(rows[rows.length - 1]) : null;
     return { rows: rows, pool: pool.length, cut: cut, max: max, scale: scale };
   }
 
@@ -126,7 +156,7 @@
     if (!res.rows.length) {
       // Percentile wala field purane feed mein nahi hota. Aisa mat kehna ki
       // "koi tight nahi" -- asli wajah ye hai ki naya scan abhi chala nahi.
-      var needScan = res.scale === 'pctl' && res.pool;
+      var needScan = res.scale === 'pctl' && res.pool;  // 'best' fallback kar leta hai
       return '<p class="empty">' + (needScan
         ? '100-candle percentile naye scan ke baad aayega. Tab tak "apne low se" ya "seedha number" use karo.'
         : res.pool
@@ -135,6 +165,7 @@
     }
     var abs = res.scale === 'abs';
     var isPctl = res.scale === 'pctl';
+    var isBest = res.scale === 'best';
     var wkey = band.abs === 'both' ? 'rsiw' : band.abs;
     var wunit = band.abs === 'prw' ? '%' : (band.id === 'price' ? '%' : '');
     return res.rows.map(function (r) {
@@ -142,7 +173,7 @@
       var pc = ratioOf(r, s.band, 'pctl');
       var width = r[wkey];
       var frac = abs ? (width || 0) / (wkey === 'prw' ? 40 : 50)
-               : isPctl ? (pc == null ? 1 : pc / 100)
+               : (isPctl || isBest) ? (pc == null ? 1 : pc / 100)
                : (rel || 1) / 2;
       var pct = Math.max(4, Math.min(100, Math.round(frac * 100)));
       var ago = agoOf(r, s.band);
@@ -154,9 +185,9 @@
         meta = sqzText(ago) + (rel != null ? ' · ab ' + num(rel, 2) + 'x' : '');
       } else if (s.band === 'mid') {
         meta = (r.mbb_b ? 'mid-BB ke upar close' : 'mid-BB ke neeche close') +
-          ' · ' + (abs ? absTxt : isPctl ? pcTxt : relTxt);
+          ' · ' + ((abs || isBest) ? absTxt : isPctl ? pcTxt : relTxt);
       } else if (s.band === 'both') {
-        meta = abs
+        meta = (abs || isBest)
           ? 'RSI ' + num(r.rsiw, 2) + ' pts · price ' + num(r.prw, 2) + '%'
           : isPctl
             ? 'RSI ' + num(r.rpctl, 0) + ' pctl · price ' + num(r.ppctl, 0) + ' pctl'
@@ -166,6 +197,7 @@
         // Dono paimane ek saath -- jo chuna hai wo pehle, doosra peeche,
         // taaki tulna karte waqt tab badalna na pade.
         meta = (abs ? absTxt + (relTxt ? ' · ' + relTxt : '')
+                    : isBest ? absTxt + (pc != null ? ' · ' + num(pc, 0) + ' pctl' : '')
                     : isPctl ? pcTxt + ' · ' + absTxt
                     : relTxt + ' · ' + absTxt) +
           (ago === 0 ? ' · low par' : '');
