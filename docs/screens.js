@@ -18,12 +18,26 @@
   // isliye wahan har stock ki pool ke andar RANK li jaati hai aur dono
   // ranks ka bada wala sort key banta hai. Matlab wahi: tabhi upar aao jab
   // dono bands tight hon.
+  // 'rel' ab pehle rel2 dekhta hai (farsh-mukt). Jab tak naya scan nahi chala,
+  // feed mein rel2 nahi hoga -- tab purane rel par gir jaata hai.
+  function relField(row, b) {
+    if (b.rel2 !== 'both' && row[b.rel2] != null) return b.rel2;
+    return b.rel;
+  }
+
   function ratioOf(row, band, scale) {
     var b = bandOf(band);
-    var key = scale === 'abs' ? b.abs : b.rel;
+    var key = scale === 'abs' ? b.abs
+            : scale === 'pctl' ? b.pctl
+            : relField(row, b);
     if (key === 'both') {
-      var x = scale === 'abs' ? row.rsiw : row.rratio;
-      var y = scale === 'abs' ? row.prw : row.pratio;
+      var x, y;
+      if (scale === 'abs') { x = row.rsiw; y = row.prw; }
+      else if (scale === 'pctl') { x = row.rpctl; y = row.ppctl; }
+      else {
+        x = row.rratio2 != null ? row.rratio2 : row.rratio;
+        y = row.pratio2 != null ? row.pratio2 : row.pratio;
+      }
       if (x == null || y == null) return null;
       return scale === 'abs' ? null : Math.max(x, y);
     }
@@ -81,7 +95,7 @@
     // hon to jiski band sach much patli hai wo upar. Isi se slider 1 par
     // le jaane par sabse tight ek naam bachta hai.
     var band = bandOf(s.band);
-    var scale = s.scale === 'abs' ? 'abs' : 'rel';
+    var scale = (s.scale === 'abs' || s.scale === 'pctl') ? s.scale : 'rel';
     var wkey = scale === 'abs' ? (band.abs === 'both' ? 'rsiw' : band.abs)
                                : (band.abs === 'both' ? 'rsiw' : band.abs);
     var bothAbs = (band.id === 'both' && scale === 'abs') ? bothAbsKeys(pool) : null;
@@ -110,35 +124,49 @@
     var s = st.sq;
     var band = bandOf(s.band);
     if (!res.rows.length) {
-      return '<p class="empty">' + (res.pool
-        ? 'Itna tight koi nahi. Slider thoda dheela karo.'
-        : s.tf + ' ka data abhi feed mein nahi hai.') + '</p>';
+      // Percentile wala field purane feed mein nahi hota. Aisa mat kehna ki
+      // "koi tight nahi" -- asli wajah ye hai ki naya scan abhi chala nahi.
+      var needScan = res.scale === 'pctl' && res.pool;
+      return '<p class="empty">' + (needScan
+        ? '100-candle percentile naye scan ke baad aayega. Tab tak "apne low se" ya "seedha number" use karo.'
+        : res.pool
+          ? 'Itna tight koi nahi. Slider thoda dheela karo.'
+          : s.tf + ' ka data abhi feed mein nahi hai.') + '</p>';
     }
     var abs = res.scale === 'abs';
+    var isPctl = res.scale === 'pctl';
     var wkey = band.abs === 'both' ? 'rsiw' : band.abs;
     var wunit = band.abs === 'prw' ? '%' : (band.id === 'price' ? '%' : '');
     return res.rows.map(function (r) {
       var rel = ratioOf(r, s.band, 'rel');
+      var pc = ratioOf(r, s.band, 'pctl');
       var width = r[wkey];
-      var frac = abs ? (width || 0) / (wkey === 'prw' ? 40 : 50) : (rel || 1) / 2;
+      var frac = abs ? (width || 0) / (wkey === 'prw' ? 40 : 50)
+               : isPctl ? (pc == null ? 1 : pc / 100)
+               : (rel || 1) / 2;
       var pct = Math.max(4, Math.min(100, Math.round(frac * 100)));
       var ago = agoOf(r, s.band);
       var relTxt = rel != null ? num(rel, 2) + 'x apne low se' : '';
+      var pcTxt = pc != null ? num(pc, 0) + ' percentile (100 candle)' : '';
       var absTxt = 'band ' + num(width, 2) + (wkey === 'prw' ? '%' : ' pts');
       var meta;
       if (s.view === 'open') {
         meta = sqzText(ago) + (rel != null ? ' · ab ' + num(rel, 2) + 'x' : '');
       } else if (s.band === 'mid') {
         meta = (r.mbb_b ? 'mid-BB ke upar close' : 'mid-BB ke neeche close') +
-          ' · ' + (abs ? absTxt : relTxt);
+          ' · ' + (abs ? absTxt : isPctl ? pcTxt : relTxt);
       } else if (s.band === 'both') {
         meta = abs
           ? 'RSI ' + num(r.rsiw, 2) + ' pts · price ' + num(r.prw, 2) + '%'
-          : 'RSI ' + num(r.rratio, 2) + 'x · price ' + num(r.pratio, 2) + 'x';
+          : isPctl
+            ? 'RSI ' + num(r.rpctl, 0) + ' pctl · price ' + num(r.ppctl, 0) + ' pctl'
+            : 'RSI ' + num(r.rratio2 != null ? r.rratio2 : r.rratio, 2) + 'x · price ' +
+              num(r.pratio2 != null ? r.pratio2 : r.pratio, 2) + 'x';
       } else {
         // Dono paimane ek saath -- jo chuna hai wo pehle, doosra peeche,
         // taaki tulna karte waqt tab badalna na pade.
         meta = (abs ? absTxt + (relTxt ? ' · ' + relTxt : '')
+                    : isPctl ? pcTxt + ' · ' + absTxt
                     : relTxt + ' · ' + absTxt) +
           (ago === 0 ? ' · low par' : '');
       }
@@ -162,6 +190,7 @@
   // number mode mein seedhe points.
   function cutText(bandId, cut, scale) {
     var b = bandOf(bandId);
+    if (scale === 'pctl') return num(cut, 0) + ' percentile';
     if (scale !== 'abs') return num(cut, 2) + 'x';
     return num(cut, 2) + (b.abs === 'prw' ? '%' : ' pts');
   }
@@ -193,7 +222,7 @@
     }).join('') + '</div>';
 
     // Ek hi switch saare bands ko relative se absolute par le jaata hai.
-    var sc = s.scale === 'abs' ? 'abs' : 'rel';
+    var sc = (s.scale === 'abs' || s.scale === 'pctl') ? s.scale : 'rel';
     html += '<div class="seg small">' + SCALES.map(function (x) {
       return '<button type="button" data-act="sq-scale" data-v="' + x.id + '"' +
         ' aria-pressed="' + (x.id === sc) + '">' + esc(x.name) + '</button>';
@@ -346,12 +375,18 @@
       html += '<div class="kv">' +
         '<div><div class="k">RSI</div><div class="v num">' + num(u.rsi, 1) + '</div></div>' +
         '<div><div class="k">BAND PTS</div><div class="v num">' + num(u.rsiw) + '</div></div>' +
-        '<div><div class="k">LOW SE</div><div class="v num">' + num(u.rratio, 2) + 'x</div></div>' +
+        '<div><div class="k">LOW SE</div><div class="v num">' +
+          num(u.rratio2 != null ? u.rratio2 : u.rratio, 2) + 'x</div></div>' +
+        '<div><div class="k">100 CANDLE</div><div class="v num">' +
+          num(u.rpctl, 0) + '</div></div>' +
       '</div>';
       html += '<div class="kv">' +
         '<div><div class="k">SQ%</div><div class="v num">' + num(u.sq, 1) + '</div></div>' +
         '<div><div class="k">PRICE BB%</div><div class="v num">' + num(u.prw) + '</div></div>' +
-        '<div><div class="k">LOW SE</div><div class="v num">' + num(u.pratio, 2) + 'x</div></div>' +
+        '<div><div class="k">LOW SE</div><div class="v num">' +
+          num(u.pratio2 != null ? u.pratio2 : u.pratio, 2) + 'x</div></div>' +
+        '<div><div class="k">100 CANDLE</div><div class="v num">' +
+          num(u.ppctl, 0) + '</div></div>' +
       '</div>';
 
       var bits = [];

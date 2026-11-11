@@ -49,15 +49,26 @@
   // Relative mein 12 aur 24 points chaudi band dono 1.00x par barabar lag
   // sakti hain. Absolute mein 12 wali hamesha jeetti hai. Dono alag list
   // dete hain, isliye switch har band par lagta hai -- Dono par bhi.
+  // rel2 = wahi "apne low se" par 20-bar min mein aaj ka candle shaamil nahi.
+  // Purane rel ka farsh 1.00x tha (16% bars wahin atke the, isliye slider
+  // ek stock tak nahi pahunchta tha); rel2 naya low banne par 1.00 se neeche
+  // jaata hai. Purana rel sirf fallback hai jab tak naya scan nahi chalta.
+  // pctl = band apni 100-candle history mein kis percentile par -- naapa gaya
+  // sabse majboot relative paimana (sabse tight 3% par band 1.30x failti hai).
   var BANDS = [
-    { id: 'rsi', name: 'RSI', rel: 'rratio', abs: 'rsiw', unit: '', absUnit: ' pts' },
-    { id: 'price', name: 'Price', rel: 'pratio', abs: 'prw', unit: '%', absUnit: '%' },
-    { id: 'both', name: 'Dono', rel: 'both', abs: 'both', unit: '', absUnit: '' },
-    { id: 'mid', name: 'Mid-BB', rel: 'rratio', abs: 'rsiw', unit: '', absUnit: ' pts' }
+    { id: 'rsi', name: 'RSI', rel: 'rratio', rel2: 'rratio2', pctl: 'rpctl',
+      abs: 'rsiw', unit: '', absUnit: ' pts' },
+    { id: 'price', name: 'Price', rel: 'pratio', rel2: 'pratio2', pctl: 'ppctl',
+      abs: 'prw', unit: '%', absUnit: '%' },
+    { id: 'both', name: 'Dono', rel: 'both', rel2: 'both', pctl: 'both',
+      abs: 'both', unit: '', absUnit: '' },
+    { id: 'mid', name: 'Mid-BB', rel: 'rratio', rel2: 'rratio2', pctl: 'rpctl',
+      abs: 'rsiw', unit: '', absUnit: ' pts' }
   ];
 
   var SCALES = [
     { id: 'rel', name: 'apne low se' },
+    { id: 'pctl', name: '100 candle mein' },
     { id: 'abs', name: 'seedha number' }
   ];
 

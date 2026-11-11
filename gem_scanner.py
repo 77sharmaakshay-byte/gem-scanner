@@ -143,6 +143,12 @@ def rsi_cross_max_width(tf: Optional[str] = None) -> float:
         return RSI_CROSS_SQUEEZE_MAX_WIDTH
     return RSI_CROSS_SQUEEZE_MAX_WIDTH_BY_TF.get(tf, RSI_CROSS_SQUEEZE_MAX_WIDTH)
 
+# "Band apni hi history mein kitne percentile par hai" -- 0 = is window ka
+# sabse patla. Yeh paimana naapa gaya hai (5 saal, 218 naam, 2.42 lakh bars):
+# sabse tight 3% par band 5 candle mein 1.30x failti hai, jabki "apne low se"
+# wale par sirf 1.09x. Sirf dikhane ke liye -- koi alert ismein se nahi banta.
+WIDTH_PCTL_BARS = 100
+
 PRICE_BB_LENGTH = 20
 PRICE_BB_MULT = 2.0
 PRICE_BB_LOOKBACK = 30
@@ -1002,6 +1008,13 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
         RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10
     ).min()
     price_width_ratio = price_width_pct / price_width_localmin.replace(0, np.nan)
+    price_width_ratio_prev = price_width_pct / (
+        price_width_pct.shift(1).rolling(RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10)
+        .min().replace(0, np.nan)
+    )
+    price_width_pctl = (
+        price_width_pct.rolling(WIDTH_PCTL_BARS, min_periods=60).rank(pct=True) * 100
+    )
     # Price band ka apna "kitni candle pehle squeeze tha" -- RSI wale se alag,
     # warna app ke Price BB tab par RSI ka number dikhta hai.
     price_squeeze_base = price_width_ratio.le(RSI_CROSS_SQUEEZE_LOCALMIN_TOL).fillna(False)
@@ -1079,6 +1092,14 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
         RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10
     ).min()
     rsi_width_ratio = rsi_width / rsi_width_localmin.replace(0, np.nan)
+    # Sirf dikhane ke liye: min mein aaj ka candle nahi, isliye naya low banane
+    # par ratio 1.00 se neeche jaata hai aur app ka slider 1 stock tak pahunch
+    # sakta hai. Upar wala rsi_width_ratio gate ke liye waisa hi rehta hai.
+    rsi_width_ratio_prev = rsi_width / (
+        rsi_width.shift(1).rolling(RSI_CROSS_SQUEEZE_LOCALMIN_BARS, min_periods=10)
+        .min().replace(0, np.nan)
+    )
+    rsi_width_pctl = rsi_width.rolling(WIDTH_PCTL_BARS, min_periods=60).rank(pct=True) * 100
     rsi_change = rsi.diff().abs()
     rsi_atr = rsi_change.rolling(RSI_BB_LENGTH, min_periods=RSI_BB_LENGTH).mean() * 1.5
     rsi_kc_upper = rsi_basis + rsi_atr
@@ -1442,6 +1463,8 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["rsi_width"] = rsi_width
     out["rsi_width_localmin"] = rsi_width_localmin
     out["rsi_width_ratio"] = rsi_width_ratio
+    out["rsi_width_ratio_prev"] = rsi_width_ratio_prev
+    out["rsi_width_pctl"] = rsi_width_pctl
     out["rsi_contraction"] = rsi_contraction
     out["rsi_squeeze_now"] = rsi_squeeze_now.astype(int)
     out["rsi_kc_squeeze"] = rsi_kc_squeeze.astype(int)
@@ -1466,6 +1489,8 @@ def compute_scan_frame(df: pd.DataFrame, tf: Optional[str] = None) -> pd.DataFra
     out["price_width_pct"] = price_width_pct
     out["price_width_localmin"] = price_width_localmin
     out["price_width_ratio"] = price_width_ratio
+    out["price_width_ratio_prev"] = price_width_ratio_prev
+    out["price_width_pctl"] = price_width_pctl
     out["price_squeeze_bars_ago"] = price_squeeze_bars_ago
     out["price_contraction"] = price_contraction
     out["sq_pct"] = display_contraction
@@ -1759,6 +1784,10 @@ def feed_universe_row(sym: str, tf: str, last: pd.Series) -> Dict[str, Any]:
         "rratio": _round_or_none(last.get("rsi_width_ratio"), 3),
         "prw": _round_or_none(last.get("price_width_pct"), 2),
         "pratio": _round_or_none(last.get("price_width_ratio"), 3),
+        "rratio2": _round_or_none(last.get("rsi_width_ratio_prev"), 3),
+        "pratio2": _round_or_none(last.get("price_width_ratio_prev"), 3),
+        "rpctl": _round_or_none(last.get("rsi_width_pctl"), 1),
+        "ppctl": _round_or_none(last.get("price_width_pctl"), 1),
         "sq": _round_or_none(last.get("sq_pct"), 1),
         "rsibb": _round_or_none(last.get("rsi_contraction"), 1),
         "sqz_ago": int(last.get("rsi_squeeze_bars_ago", 999)),
